@@ -1,0 +1,245 @@
+from datetime import datetime
+from typing import Optional, List, Any
+from pydantic import BaseModel, EmailStr, Field
+from app.models.domain import (
+    UserRole, AvailabilityStatus, VerificationStatus, JobUrgency,
+    JobSource, JobStatus, ApplicationStatus, DirectOfferStatus, FraudFlagStatus
+)
+
+# Auth Schemas
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str
+    role: UserRole = UserRole.WORKER
+    full_name: str
+    phone: Optional[str] = None
+    gender: Optional[str] = "prefer_not_to_say"
+    latitude: Optional[float] = 12.9716
+    longitude: Optional[float] = 77.5946
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+    user_id: int
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    phone: Optional[str]
+    role: UserRole
+    is_verified: bool
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# Skill Schemas
+class WorkerSkillBase(BaseModel):
+    skill_name: str
+    years_experience: float = 1.0
+    hourly_rate: float = 300.0
+    skill_tags: List[str] = []
+
+class WorkerSkillCreate(WorkerSkillBase):
+    pass
+
+class WorkerSkillResponse(WorkerSkillBase):
+    id: int
+    worker_id: int
+    class Config:
+        from_attributes = True
+
+# Worker Profile Schemas
+class WorkerProfileBase(BaseModel):
+    full_name: str
+    bio: Optional[str] = None
+    gender: Optional[str] = "prefer_not_to_say"
+    phone: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    latitude: float = 12.9716
+    longitude: float = 77.5946
+    service_radius_km: float = 15.0
+    hourly_rate: float = 350.0
+    completed_jobs_count: int = 0
+    languages_spoken: List[str] = ["English", "Kannada", "Hindi"]
+    availability_status: AvailabilityStatus = AvailabilityStatus.AVAILABLE
+
+class WorkerProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    gender: Optional[str] = None
+    phone: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    service_radius_km: Optional[float] = None
+    hourly_rate: Optional[float] = None
+    languages_spoken: Optional[List[str]] = None
+    availability_status: Optional[AvailabilityStatus] = None
+
+class WorkerProfileResponse(WorkerProfileBase):
+    id: int
+    user_id: int
+    trust_score: float
+    verification_status: VerificationStatus
+    skills: List[WorkerSkillResponse] = []
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# Provider Profile Schemas
+class ProviderProfileResponse(BaseModel):
+    id: int
+    user_id: int
+    full_name: str
+    phone: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    default_latitude: float
+    default_longitude: float
+    class Config:
+        from_attributes = True
+
+class ProviderProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+
+# Job Schemas (Path A & Shared)
+class JobCreate(BaseModel):
+    title: str
+    description: str
+    required_skill: str
+    workers_needed: int = 1
+    budget_min: float
+    budget_max: float
+    latitude: Optional[float] = 12.9716
+    longitude: Optional[float] = 77.5946
+    urgency: JobUrgency = JobUrgency.IMMEDIATE
+    scheduled_date: Optional[str] = None
+
+class JobResponse(BaseModel):
+    id: int
+    provider_id: int
+    worker_id: Optional[int] = None
+    title: str
+    description: str
+    required_skill: str
+    workers_needed: int = 1
+    accepted_count: int = 0
+    budget_min: float
+    budget_max: float
+    latitude: float
+    longitude: float
+    urgency: JobUrgency
+    scheduled_date: Optional[str]
+    source: JobSource
+    status: JobStatus
+    provider_completed: bool = False
+    worker_completed: bool = False
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    provider: Optional[ProviderProfileResponse] = None
+    worker: Optional[WorkerProfileResponse] = None
+    class Config:
+        from_attributes = True
+
+class MatchedWorkerResponse(BaseModel):
+    worker: WorkerProfileResponse
+    match_score: float
+    distance_km: float
+    content_score: float
+    geo_score: float
+    behavioral_score: float
+    trust_score_factor: float
+
+class JobApplicationResponse(BaseModel):
+    id: int
+    job_id: int
+    worker_id: int
+    status: ApplicationStatus
+    match_score: float
+    distance_km: float
+    applied_at: datetime
+    worker: Optional[WorkerProfileResponse] = None
+    class Config:
+        from_attributes = True
+
+# Direct Offer Schemas (Path B)
+class DirectOfferCreate(BaseModel):
+    worker_id: int
+    title: str
+    description: str
+    required_skill: str
+    proposed_budget: float
+    latitude: Optional[float] = 12.9716
+    longitude: Optional[float] = 77.5946
+    scheduled_date: Optional[str] = None
+
+class DirectOfferResponse(BaseModel):
+    id: int
+    provider_id: int
+    worker_id: int
+    title: str
+    description: str
+    required_skill: str
+    proposed_budget: float
+    latitude: float
+    longitude: float
+    scheduled_date: Optional[str]
+    status: DirectOfferStatus
+    job_id: Optional[int]
+    sent_at: datetime
+    responded_at: Optional[datetime]
+    provider: Optional[ProviderProfileResponse] = None
+    worker: Optional[WorkerProfileResponse] = None
+    class Config:
+        from_attributes = True
+
+class DirectOfferRespond(BaseModel):
+    action: str  # "accept" or "decline"
+
+# Review Schemas
+class ReviewCreate(BaseModel):
+    job_id: int
+    reviewee_id: int
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = None
+
+class ReviewResponse(BaseModel):
+    id: int
+    job_id: int
+    reviewer_id: int
+    reviewee_id: int
+    rating: int
+    comment: Optional[str]
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+# Admin & Analytics Schemas
+class FraudFlagResponse(BaseModel):
+    id: int
+    user_id: int
+    anomaly_score: float
+    reason: str
+    status: FraudFlagStatus
+    flagged_at: datetime
+    user_email: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+class PlatformAnalyticsResponse(BaseModel):
+    total_users: int
+    total_workers: int
+    total_providers: int
+    total_jobs: int
+    completed_jobs: int
+    path_a_jobs_count: int
+    path_b_jobs_count: int
+    total_direct_offers: int
+    open_fraud_flags: int
