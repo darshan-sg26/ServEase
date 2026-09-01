@@ -2,7 +2,7 @@ import datetime
 import enum
 import uuid
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, JSON
+    Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, JSON, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -94,7 +94,7 @@ class WorkerProfile(Base):
     completed_jobs_count = Column(Integer, default=0)
     languages_spoken = Column(JSON, default=lambda: ["English", "Kannada", "Hindi"])
     availability_status = Column(SQLEnum(AvailabilityStatus), default=AvailabilityStatus.AVAILABLE)
-    trust_score = Column(Float, default=75.0)
+    trust_score = Column(Float, default=30.5)
     verification_status = Column(SQLEnum(VerificationStatus), default=VerificationStatus.UNVERIFIED)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
@@ -201,12 +201,18 @@ class DirectOffer(Base):
 
 class Review(Base):
     __tablename__ = "reviews"
+    __table_args__ = (
+        UniqueConstraint("job_id", "reviewer_id", name="uq_job_reviewer_rating"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
-    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    reviewee_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    rating = Column(Integer, nullable=False)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    reviewer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    reviewee_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    reviewer_role = Column(SQLEnum(UserRole), nullable=False)
+    overall_rating = Column(Integer, nullable=False)
+    rating = Column(Integer, nullable=False)  # Backward compatible alias for overall_rating
+    category_ratings = Column(JSON, default=dict)
     comment = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 

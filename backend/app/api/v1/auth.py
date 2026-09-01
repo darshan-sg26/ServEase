@@ -53,10 +53,13 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
             longitude=data.longitude or 77.5946,
             service_radius_km=15.0,
             availability_status=AvailabilityStatus.AVAILABLE,
-            trust_score=75.0,
-            verification_status=VerificationStatus.VERIFIED
+            trust_score=30.5,
+            verification_status=VerificationStatus.UNVERIFIED
         )
         db.add(w_profile)
+        await db.flush()
+        from app.services.trust_engine import compute_and_update_trust_score
+        await compute_and_update_trust_score(w_profile.id, db)
     elif data.role == UserRole.PROVIDER:
         p_profile = ProviderProfile(
             user_id=user.id,
@@ -91,8 +94,9 @@ async def get_my_provider_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    from app.services.rating_service import build_provider_profile_response
     result = await db.execute(select(ProviderProfile).where(ProviderProfile.user_id == current_user.id))
     provider = result.scalars().first()
     if not provider:
         raise HTTPException(status_code=404, detail="Provider profile not found")
-    return provider
+    return await build_provider_profile_response(provider, db)

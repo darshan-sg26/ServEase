@@ -11,8 +11,17 @@ from app.models.domain import (
     ProviderProfile, WorkerProfile
 )
 from app.schemas.domain import DirectOfferCreate, DirectOfferResponse, DirectOfferRespond
+from app.services.rating_service import build_worker_profile_response, build_provider_profile_response
 
 router = APIRouter(prefix="/direct-offers", tags=["Direct Job Offers (Path B)"])
+
+async def _build_offer_response(offer: DirectOffer, db: AsyncSession) -> DirectOfferResponse:
+    resp = DirectOfferResponse.model_validate(offer)
+    if offer.provider:
+        resp.provider = await build_provider_profile_response(offer.provider, db)
+    if offer.worker:
+        resp.worker = await build_worker_profile_response(offer.worker, db)
+    return resp
 
 @router.post("", response_model=DirectOfferResponse)
 async def create_direct_offer(
@@ -56,7 +65,8 @@ async def create_direct_offer(
         )
         .where(DirectOffer.id == offer.id)
     )
-    return res.scalars().first()
+    o = res.scalars().first()
+    return await _build_offer_response(o, db)
 
 @router.get("", response_model=List[DirectOfferResponse])
 async def list_direct_offers(
@@ -84,7 +94,12 @@ async def list_direct_offers(
 
     stmt = stmt.order_by(DirectOffer.sent_at.desc())
     result = await db.execute(stmt)
-    return result.scalars().all()
+    offers = result.scalars().all()
+
+    resp_list = []
+    for o in offers:
+        resp_list.append(await _build_offer_response(o, db))
+    return resp_list
 
 @router.patch("/{offer_id}", response_model=DirectOfferResponse)
 async def respond_to_offer(
@@ -135,4 +150,4 @@ async def respond_to_offer(
 
     await db.commit()
     await db.refresh(offer)
-    return offer
+    return await _build_offer_response(offer, db)

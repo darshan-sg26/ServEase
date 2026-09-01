@@ -8,6 +8,7 @@ from app.api.v1.auth import get_current_user
 from app.models.domain import User, WorkerProfile, WorkerSkill, AvailabilityStatus, VerificationStatus, Job, JobStatus
 from app.schemas.domain import WorkerProfileResponse, WorkerProfileUpdate, WorkerSkillCreate, WorkerSkillResponse
 from app.services.ml_matching import calculate_haversine_distance
+from app.services.rating_service import build_worker_profile_response
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
 
@@ -32,7 +33,7 @@ async def get_my_worker_profile(
     completed_jobs = jobs_res.scalars().all()
     profile.completed_jobs_count = len(completed_jobs)
 
-    return profile
+    return await build_worker_profile_response(profile, db)
 
 @router.get("", response_model=List[WorkerProfileResponse])
 async def list_workers(
@@ -49,10 +50,10 @@ async def list_workers(
     Searchable worker directory for providers with skill, geo, trust score, and availability filters.
     """
     stmt = select(WorkerProfile).options(selectinload(WorkerProfile.skills))
-    
+
     if availability:
         stmt = stmt.where(WorkerProfile.availability_status == availability)
-    
+
     if min_trust_score and min_trust_score > 0:
         stmt = stmt.where(WorkerProfile.trust_score >= min_trust_score)
 
@@ -77,7 +78,8 @@ async def list_workers(
             if dist > max_distance_km:
                 continue
 
-        filtered.append(p)
+        resp = await build_worker_profile_response(p, db)
+        filtered.append(resp)
 
     return filtered
 
@@ -99,7 +101,7 @@ async def get_worker_profile(worker_id: int, db: AsyncSession = Depends(get_db))
     completed_jobs = jobs_res.scalars().all()
     profile.completed_jobs_count = len(completed_jobs)
 
-    return profile
+    return await build_worker_profile_response(profile, db)
 
 @router.put("/me", response_model=WorkerProfileResponse)
 async def update_my_profile(
@@ -141,7 +143,7 @@ async def update_my_profile(
 
     await db.commit()
     await db.refresh(profile)
-    return profile
+    return await build_worker_profile_response(profile, db)
 
 @router.post("/me/skills", response_model=WorkerSkillResponse)
 async def add_skill(
@@ -184,4 +186,4 @@ async def toggle_availability(
     profile.availability_status = status
     await db.commit()
     await db.refresh(profile)
-    return profile
+    return await build_worker_profile_response(profile, db)

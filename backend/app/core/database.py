@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import text
 from app.core.config import settings
 
 db_url = settings.ASYNC_DATABASE_URL
@@ -48,3 +49,18 @@ async def get_db():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Safe schema migration for SQLite
+        if is_sqlite:
+            try:
+                res = await conn.execute(text("PRAGMA table_info(reviews);"))
+                existing_cols = [row[1] for row in res.fetchall()]
+                if existing_cols:
+                    if "reviewer_role" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE reviews ADD COLUMN reviewer_role VARCHAR;"))
+                    if "overall_rating" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE reviews ADD COLUMN overall_rating INTEGER;"))
+                        await conn.execute(text("UPDATE reviews SET overall_rating = rating WHERE overall_rating IS NULL;"))
+                    if "category_ratings" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE reviews ADD COLUMN category_ratings JSON;"))
+            except Exception:
+                pass
