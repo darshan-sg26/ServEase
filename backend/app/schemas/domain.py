@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Any
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from app.models.domain import (
     UserRole, AvailabilityStatus, VerificationStatus, JobUrgency,
     JobSource, JobStatus, ApplicationStatus, DirectOfferStatus, FraudFlagStatus
@@ -87,6 +87,8 @@ class WorkerProfileResponse(WorkerProfileBase):
     trust_score: float
     verification_status: VerificationStatus
     skills: List[WorkerSkillResponse] = []
+    avg_rating: Optional[float] = None
+    rating_count: int = 0
     created_at: datetime
     class Config:
         from_attributes = True
@@ -100,6 +102,8 @@ class ProviderProfileResponse(BaseModel):
     profile_photo_url: Optional[str] = None
     default_latitude: float
     default_longitude: float
+    avg_rating: Optional[float] = None
+    rating_count: int = 0
     class Config:
         from_attributes = True
 
@@ -203,23 +207,54 @@ class DirectOfferResponse(BaseModel):
 class DirectOfferRespond(BaseModel):
     action: str  # "accept" or "decline"
 
-# Review Schemas
+# Review & Rating Schemas
 class ReviewCreate(BaseModel):
     job_id: int
-    reviewee_id: int
-    rating: int = Field(..., ge=1, le=5)
+    overall_rating: Optional[int] = Field(None, ge=1, le=5)
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    reviewee_id: Optional[int] = None
+    category_ratings: Optional[dict] = Field(default_factory=dict)
     comment: Optional[str] = None
+
+    @model_validator(mode="after")
+    def populate_rating_fields(self):
+        if self.overall_rating is None and self.rating is not None:
+            self.overall_rating = self.rating
+        elif self.rating is None and self.overall_rating is not None:
+            self.rating = self.overall_rating
+        elif self.overall_rating is None and self.rating is None:
+            raise ValueError("Either overall_rating or rating must be provided (1-5)")
+        return self
 
 class ReviewResponse(BaseModel):
     id: int
     job_id: int
     reviewer_id: int
     reviewee_id: int
+    reviewer_role: UserRole
+    overall_rating: int
     rating: int
-    comment: Optional[str]
+    category_ratings: Optional[dict] = None
+    comment: Optional[str] = None
     created_at: datetime
     class Config:
         from_attributes = True
+
+class JobRatingsStatusResponse(BaseModel):
+    job_id: int
+    is_completed: bool
+    worker_rated_provider: bool
+    provider_rated_worker: bool
+    worker_review: Optional[ReviewResponse] = None
+    provider_review: Optional[ReviewResponse] = None
+
+class RatingSummaryResponse(BaseModel):
+    user_id: int
+    role: UserRole
+    avg_rating: Optional[float] = None
+    rating_count: int = 0
+    category_averages: Optional[dict] = None
+    recent_reviews: List[ReviewResponse] = []
 
 # Admin & Analytics Schemas
 class FraudFlagResponse(BaseModel):

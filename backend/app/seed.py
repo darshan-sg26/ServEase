@@ -2,7 +2,7 @@ import asyncio
 import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.core.database import engine, AsyncSessionLocal, Base
+from app.core.database import engine, AsyncSessionLocal, Base, init_db
 from app.core.security import get_password_hash
 from app.models.domain import (
     User, UserRole, WorkerProfile, WorkerSkill, ProviderProfile, Job, JobUrgency,
@@ -12,8 +12,7 @@ from app.services.trust_engine import compute_and_update_trust_score
 from app.services.fraud_engine import run_isolation_forest_fraud_detection
 
 async def seed_database():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await init_db()
 
     async with AsyncSessionLocal() as db:
         # Check if already seeded

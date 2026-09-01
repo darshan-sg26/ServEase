@@ -11,10 +11,15 @@ from app.models.domain import (
     ProviderProfile, WorkerProfile, Review, DirectOffer
 )
 from app.schemas.domain import (
-    JobCreate, JobResponse, MatchedWorkerResponse, ReviewCreate, ReviewResponse, WorkerProfileResponse, JobApplicationResponse
+    JobCreate, JobResponse, MatchedWorkerResponse, ReviewCreate, ReviewResponse,
+    WorkerProfileResponse, ProviderProfileResponse, JobApplicationResponse,
+    JobRatingsStatusResponse, RatingSummaryResponse
 )
 from app.services.ml_matching import rank_workers_for_job
 from app.services.trust_engine import compute_and_update_trust_score
+from app.services.rating_service import (
+    get_user_rating_stats, build_worker_profile_response, build_provider_profile_response
+)
 
 router = APIRouter(prefix="/jobs", tags=["Jobs (Path A & Shared)"])
 
@@ -30,6 +35,13 @@ async def _build_job_response(job: Job, db: AsyncSession) -> JobResponse:
 
     resp = JobResponse.model_validate(job)
     resp.accepted_count = accepted_count
+
+    # Attach computed ratings to embedded profiles
+    if job.provider:
+        resp.provider = await build_provider_profile_response(job.provider, db)
+    if job.worker:
+        resp.worker = await build_worker_profile_response(job.worker, db)
+
     return resp
 
 @router.post("", response_model=JobResponse)
@@ -105,7 +117,7 @@ async def list_jobs(
 
     result = await db.execute(stmt)
     jobs = result.scalars().all()
-    
+
     responses = []
     for j in jobs:
         responses.append(await _build_job_response(j, db))
@@ -166,7 +178,7 @@ async def get_job_matches(job_id: int, db: AsyncSession = Depends(get_db)):
     response_list = []
     for r in ranked:
         w_obj = r["worker_profile"]
-        w_pydantic = WorkerProfileResponse.model_validate(w_obj)
+        w_pydantic = await build_worker_profile_response(w_obj, db)
         response_list.append(MatchedWorkerResponse(
             worker=w_pydantic,
             match_score=r["match_score"],
@@ -191,7 +203,14 @@ async def list_job_applications(
         .where(JobApplication.job_id == job_id)
         .order_by(JobApplication.applied_at.desc())
     )
-    return result.scalars().all()
+    apps = result.scalars().all()
+    resp_list = []
+    for a in apps:
+        a_resp = JobApplicationResponse.model_validate(a)
+        if a.worker:
+            a_resp.worker = await build_worker_profile_response(a.worker, db)
+        resp_list.append(a_resp)
+    return resp_list
 
 @router.post("/{job_id}/applications/{application_id}/respond")
 async def respond_job_application(
@@ -201,12 +220,6 @@ async def respond_job_application(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Accepts/Rejects a job application.
-    Enforces multi-worker capacity (workers_needed).
-    Automatically rejects remaining pending applications when capacity is filled,
-    and initializes 1-to-1 Realtime Chat between provider and worker!
-    """
     app_res = await db.execute(
         select(JobApplication)
         .options(selectinload(JobApplication.worker))
@@ -222,7 +235,6 @@ async def respond_job_application(
         raise HTTPException(status_code=404, detail="Job not found")
 
     if action == "accept":
-        # Check current accepted count
         acc_res = await db.execute(
             select(JobApplication).where(
                 (JobApplication.job_id == job_id) & (JobApplication.status == ApplicationStatus.ACCEPTED)
@@ -242,7 +254,6 @@ async def respond_job_application(
         if not job.started_at:
             job.started_at = datetime.datetime.utcnow()
 
-        # Auto-rejection logic: if workers_needed capacity is now full
         auto_rejected_count = 0
         if new_accepted_count >= job.workers_needed:
             job.status = JobStatus.ASSIGNED
@@ -401,26 +412,151 @@ async def complete_job(
             "worker_completed": job.worker_completed
         }
 
-@router.post("/reviews")
+@router.post("/reviews", response_model=ReviewResponse)
 async def create_review(
     data: ReviewCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Submits a 2-way post-completion review.
+    - Validates genuine job completion.
+    - Validates caller is either worker or provider participant.
+    - Automatically maps recipient reviewee and reviewer role.
+    - Enforces 1 rating per party per job (duplicate prevention).
+    - Recalculates Trust Score dynamically.
+    """
+    j_res = await db.execute(
+        select(Job)
+        .options(selectinload(Job.provider), selectinload(Job.worker))
+        .where(Job.id == data.job_id)
+    )
+    job = j_res.scalars().first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    is_completed = (job.status == JobStatus.COMPLETED) or (job.provider_completed and job.worker_completed)
+    if not is_completed:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot rate an uncompleted job. Both provider and worker must confirm completion first."
+        )
+
+    if not job.provider or not job.worker:
+        raise HTTPException(status_code=400, detail="Job does not have both an assigned worker and provider.")
+
+    provider_user_id = job.provider.user_id
+    worker_user_id = job.worker.user_id
+
+    if current_user.id == worker_user_id:
+        reviewer_role = UserRole.WORKER
+        reviewee_id = provider_user_id
+    elif current_user.id == provider_user_id:
+        reviewer_role = UserRole.PROVIDER
+        reviewee_id = worker_user_id
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized: Only the assigned worker or provider of this job can submit a rating."
+        )
+
+    # Check for duplicate submission
+    existing_rev = await db.execute(
+        select(Review).where(
+            Review.job_id == data.job_id,
+            Review.reviewer_id == current_user.id
+        )
+    )
+    if existing_rev.scalars().first():
+        raise HTTPException(
+            status_code=400,
+            detail="You have already submitted a rating for this completed job."
+        )
+
+    overall_score = data.overall_rating
+
     rev = Review(
         job_id=data.job_id,
         reviewer_id=current_user.id,
-        reviewee_id=data.reviewee_id,
-        rating=data.rating,
+        reviewee_id=reviewee_id,
+        reviewer_role=reviewer_role,
+        overall_rating=overall_score,
+        rating=overall_score,
+        category_ratings=data.category_ratings or {},
         comment=data.comment
     )
     db.add(rev)
     await db.commit()
+    await db.refresh(rev)
 
     # Recalculate trust score if reviewee is worker
-    w_res = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == data.reviewee_id))
-    worker = w_res.scalars().first()
-    if worker:
-        await compute_and_update_trust_score(worker.id, db)
+    if reviewer_role == UserRole.PROVIDER and job.worker_id:
+        await compute_and_update_trust_score(job.worker_id, db)
 
-    return {"message": "Review submitted successfully", "review_id": rev.id}
+    return rev
+
+@router.get("/{job_id}/ratings", response_model=JobRatingsStatusResponse)
+async def get_job_ratings_status(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    j_res = await db.execute(select(Job).where(Job.id == job_id))
+    job = j_res.scalars().first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    is_completed = (job.status == JobStatus.COMPLETED) or (job.provider_completed and job.worker_completed)
+
+    revs_res = await db.execute(select(Review).where(Review.job_id == job_id))
+    reviews = revs_res.scalars().all()
+
+    worker_review = None
+    provider_review = None
+    for r in reviews:
+        if r.reviewer_role == UserRole.WORKER:
+            worker_review = ReviewResponse.model_validate(r)
+        elif r.reviewer_role == UserRole.PROVIDER:
+            provider_review = ReviewResponse.model_validate(r)
+
+    return JobRatingsStatusResponse(
+        job_id=job_id,
+        is_completed=is_completed,
+        worker_rated_provider=worker_review is not None,
+        provider_rated_worker=provider_review is not None,
+        worker_review=worker_review,
+        provider_review=provider_review
+    )
+
+@router.get("/users/{user_id}/rating-summary", response_model=RatingSummaryResponse)
+async def get_user_rating_summary(
+    user_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    u_res = await db.execute(select(User).where(User.id == user_id))
+    user = u_res.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    avg_rating, count, cat_averages = await get_user_rating_stats(user.id, user.role, db)
+
+    reviewer_role = UserRole.PROVIDER if user.role == UserRole.WORKER else UserRole.WORKER
+    revs_res = await db.execute(
+        select(Review)
+        .where(
+            Review.reviewee_id == user.id,
+            Review.reviewer_role == reviewer_role
+        )
+        .order_by(Review.created_at.desc())
+        .limit(10)
+    )
+    recent = [ReviewResponse.model_validate(r) for r in revs_res.scalars().all()]
+
+    return RatingSummaryResponse(
+        user_id=user.id,
+        role=user.role,
+        avg_rating=avg_rating,
+        rating_count=count,
+        category_averages=cat_averages,
+        recent_reviews=recent
+    )
