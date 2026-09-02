@@ -52,6 +52,10 @@ async def build_worker_profile_response(
 ) -> WorkerProfileResponse:
     avg_rating, count, _ = await get_user_rating_stats(worker.user_id, UserRole.WORKER, db)
     resp = WorkerProfileResponse.model_validate(worker)
+    if not resp.phone:
+        u = worker.__dict__.get('user')
+        if u and getattr(u, 'phone', None):
+            resp.phone = u.phone
     resp.avg_rating = avg_rating
     resp.rating_count = count
     return resp
@@ -62,6 +66,10 @@ async def build_provider_profile_response(
 ) -> ProviderProfileResponse:
     avg_rating, count, _ = await get_user_rating_stats(provider.user_id, UserRole.PROVIDER, db)
     resp = ProviderProfileResponse.model_validate(provider)
+    if not resp.phone:
+        u = provider.__dict__.get('user')
+        if u and getattr(u, 'phone', None):
+            resp.phone = u.phone
     resp.avg_rating = avg_rating
     resp.rating_count = count
     return resp
