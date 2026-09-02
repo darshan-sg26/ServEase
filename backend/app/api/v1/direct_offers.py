@@ -70,6 +70,7 @@ async def create_direct_offer(
 
 @router.get("", response_model=List[DirectOfferResponse])
 async def list_direct_offers(
+    q: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -98,6 +99,14 @@ async def list_direct_offers(
 
     resp_list = []
     for o in offers:
+        if q and q.strip():
+            tokens = [t.lower() for t in q.strip().split() if t.strip()]
+            prov_name = o.provider.full_name.lower() if o.provider else ""
+            worker_name = o.worker.full_name.lower() if o.worker else ""
+            combined_text = f"{o.title.lower()} {o.description.lower() if o.description else ''} {o.required_skill.lower()} {prov_name} {worker_name} {o.status.value.lower()}"
+            if not all(tok in combined_text for tok in tokens):
+                continue
+
         resp_list.append(await _build_offer_response(o, db))
     return resp_list
 

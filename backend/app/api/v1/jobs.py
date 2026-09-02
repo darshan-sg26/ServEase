@@ -93,6 +93,7 @@ async def post_job(
 
 @router.get("", response_model=List[JobResponse])
 async def list_jobs(
+    q: Optional[str] = Query(None, description="Free-text search query across title, description, skill, provider"),
     near_lat: Optional[float] = None,
     near_lng: Optional[float] = None,
     skill: Optional[str] = None,
@@ -120,6 +121,14 @@ async def list_jobs(
 
     responses = []
     for j in jobs:
+        if q and q.strip():
+            tokens = [t.lower() for t in q.strip().split() if t.strip()]
+            prov_name = j.provider.full_name.lower() if j.provider else ""
+            worker_name = j.worker.full_name.lower() if j.worker else ""
+            combined_text = f"{j.title.lower()} {j.description.lower()} {j.required_skill.lower()} {prov_name} {worker_name} {j.status.value.lower()}"
+            if not all(tok in combined_text for tok in tokens):
+                continue
+
         responses.append(await _build_job_response(j, db))
     return responses
 

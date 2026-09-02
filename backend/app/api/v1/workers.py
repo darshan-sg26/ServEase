@@ -37,6 +37,7 @@ async def get_my_worker_profile(
 
 @router.get("", response_model=List[WorkerProfileResponse])
 async def list_workers(
+    q: Optional[str] = Query(None, description="Free-text search query across worker name, skills, bio"),
     skill: Optional[str] = Query(None, description="Filter by skill keyword"),
     near_lat: Optional[float] = Query(None, description="Provider latitude"),
     near_lng: Optional[float] = Query(None, description="Provider longitude"),
@@ -47,7 +48,7 @@ async def list_workers(
 ):
     """
     Path B Browse & Offer requirement (Section 8 & Section 7.3):
-    Searchable worker directory for providers with skill, geo, trust score, and availability filters.
+    Searchable worker directory for providers with search query, skill, geo, trust score, and availability filters.
     """
     stmt = select(WorkerProfile).options(selectinload(WorkerProfile.skills))
 
@@ -62,6 +63,16 @@ async def list_workers(
 
     filtered = []
     for p in profiles:
+        # Free-text multi-token search (name, skills, tags, bio)
+        if q and q.strip():
+            tokens = [t.lower() for t in q.strip().split() if t.strip()]
+            skills_str = " ".join([f"{s.skill_name} {' '.join(s.skill_tags or [])}" for s in p.skills]).lower()
+            combined_search_text = f"{p.full_name.lower()} {p.bio.lower() if p.bio else ''} {skills_str}"
+            
+            # Every token must match at least one attribute of the worker
+            if not all(tok in combined_search_text for tok in tokens):
+                continue
+
         # Skill filter
         if skill and skill.strip():
             skill_matched = False
