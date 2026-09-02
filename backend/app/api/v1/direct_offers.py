@@ -60,8 +60,9 @@ async def create_direct_offer(
     res = await db.execute(
         select(DirectOffer)
         .options(
-            selectinload(DirectOffer.provider),
-            selectinload(DirectOffer.worker).selectinload(WorkerProfile.skills)
+            selectinload(DirectOffer.provider).selectinload(ProviderProfile.user),
+            selectinload(DirectOffer.worker).selectinload(WorkerProfile.skills),
+            selectinload(DirectOffer.worker).selectinload(WorkerProfile.user),
         )
         .where(DirectOffer.id == offer.id)
     )
@@ -77,8 +78,9 @@ async def list_direct_offers(
     stmt = (
         select(DirectOffer)
         .options(
-            selectinload(DirectOffer.provider),
-            selectinload(DirectOffer.worker).selectinload(WorkerProfile.skills)
+            selectinload(DirectOffer.provider).selectinload(ProviderProfile.user),
+            selectinload(DirectOffer.worker).selectinload(WorkerProfile.skills),
+            selectinload(DirectOffer.worker).selectinload(WorkerProfile.user),
         )
     )
 
@@ -120,8 +122,9 @@ async def respond_to_offer(
     result = await db.execute(
         select(DirectOffer)
         .options(
-            selectinload(DirectOffer.provider),
-            selectinload(DirectOffer.worker).selectinload(WorkerProfile.skills)
+            selectinload(DirectOffer.provider).selectinload(ProviderProfile.user),
+            selectinload(DirectOffer.worker).selectinload(WorkerProfile.skills),
+            selectinload(DirectOffer.worker).selectinload(WorkerProfile.user),
         )
         .where(DirectOffer.id == offer_id)
     )
@@ -129,34 +132,63 @@ async def respond_to_offer(
     if not offer:
         raise HTTPException(status_code=404, detail="Direct offer not found")
 
-    action = data.action.lower()
-    offer.responded_at = datetime.datetime.utcnow()
+    # Worker authorization check
+    if current_user.role == UserRole.WORKER:
+        w_res = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == current_user.id))
+        worker = w_res.scalars().first()
+        if not worker or offer.worker_id != worker.id:
+            raise HTTPException(status_code=403, detail="Unauthorized: Only the assigned worker can respond to this offer")
+
+    action = data.action.strip().lower()
+
     if action == "accept":
+        # If already accepted, return idempotently
+        if offer.status == DirectOfferStatus.ACCEPTED:
+            return await _build_offer_response(offer, db)
+
+        if offer.status == DirectOfferStatus.DECLINED:
+            raise HTTPException(status_code=400, detail="Cannot accept an offer that has already been declined")
+
+        # Atomic transition to ACCEPTED
         offer.status = DirectOfferStatus.ACCEPTED
-        # Auto-create assigned Job requirement with started_at timestamp
-        job = Job(
-            provider_id=offer.provider_id,
-            worker_id=offer.worker_id,
-            title=offer.title,
-            description=offer.description,
-            required_skill=offer.required_skill,
-            workers_needed=1,
-            budget_min=offer.proposed_budget,
-            budget_max=offer.proposed_budget,
-            latitude=offer.latitude,
-            longitude=offer.longitude,
-            scheduled_date=offer.scheduled_date,
-            source=JobSource.DIRECT_OFFER,
-            status=JobStatus.ASSIGNED,
-            started_at=datetime.datetime.utcnow()
-        )
-        db.add(job)
-        await db.flush()
-        offer.job_id = job.id
+        offer.responded_at = datetime.datetime.utcnow()
+
+        # Create linked assigned Job if not already created
+        if not offer.job_id:
+            job = Job(
+                provider_id=offer.provider_id,
+                worker_id=offer.worker_id,
+                title=offer.title,
+                description=offer.description,
+                required_skill=offer.required_skill,
+                workers_needed=1,
+                budget_min=offer.proposed_budget,
+                budget_max=offer.proposed_budget,
+                latitude=offer.latitude,
+                longitude=offer.longitude,
+                scheduled_date=offer.scheduled_date,
+                source=JobSource.DIRECT_OFFER,
+                status=JobStatus.ASSIGNED,
+                started_at=datetime.datetime.utcnow()
+            )
+            db.add(job)
+            await db.flush()
+            offer.job_id = job.id
 
     elif action == "decline":
+        # If already declined, return idempotently
+        if offer.status == DirectOfferStatus.DECLINED:
+            return await _build_offer_response(offer, db)
+
+        if offer.status == DirectOfferStatus.ACCEPTED:
+            raise HTTPException(status_code=400, detail="Cannot decline an offer that has already been accepted")
+
         offer.status = DirectOfferStatus.DECLINED
+        offer.responded_at = datetime.datetime.utcnow()
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid action '{data.action}'. Allowed actions: 'accept', 'decline'")
 
     await db.commit()
     await db.refresh(offer)
     return await _build_offer_response(offer, db)
+

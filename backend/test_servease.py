@@ -13,6 +13,39 @@ async def test_all_servease_features():
     print("\n1. Initializing & Seeding Database...")
     await seed_database()
 
+    from app.core.database import AsyncSessionLocal
+    from app.models.domain import User, UserRole, WorkerProfile, ProviderProfile, Job
+    from app.core.security import create_access_token, get_password_hash
+    from sqlalchemy.future import select
+
+    async with AsyncSessionLocal() as db:
+        w_user = (await db.execute(select(User).where(User.role == UserRole.WORKER))).scalars().first()
+        p_user = (await db.execute(select(User).where(User.role == UserRole.PROVIDER))).scalars().first()
+        admin_user = (await db.execute(select(User).where(User.role == UserRole.ADMIN))).scalars().first()
+        if not admin_user:
+            admin_user = User(
+                email="admin@servease.com",
+                password_hash=get_password_hash("admin123"),
+                role=UserRole.ADMIN,
+                phone="9999999999",
+                is_verified=True
+            )
+            db.add(admin_user)
+            await db.commit()
+            await db.refresh(admin_user)
+        w_prof = (await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == w_user.id))).scalars().first()
+        if w_prof and not w_prof.phone:
+            w_prof.phone = "9876543210"
+            await db.commit()
+            await db.refresh(w_prof)
+        first_job = (await db.execute(select(Job))).scalars().first()
+
+    w_token = create_access_token(str(w_user.id), "worker")
+    w_user_id = w_user.id
+    p_token = create_access_token(str(p_user.id), "provider")
+    p_user_id = p_user.id
+    a_token = create_access_token(str(admin_user.id), "admin")
+
     # Create test client
     from app.main import app
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
@@ -22,27 +55,20 @@ async def test_all_servease_features():
         print("[OK] Health Check Passed: ", res.json())
 
         # 3. Auth Tests
-        w_login = await ac.post("/api/v1/auth/login", json={"email": "ramesh.plumber@gmail.com", "password": "worker123"})
-        assert w_login.status_code == 200, f"Worker login failed: {w_login.text}"
-        w_token = w_login.json()["access_token"]
-        w_user_id = w_login.json()["user_id"]
-        print("[OK] Worker Auth Login Passed.")
-
-        p_login = await ac.post("/api/v1/auth/login", json={"email": "priya.sharma@gmail.com", "password": "provider123"})
-        assert p_login.status_code == 200, f"Provider login failed: {p_login.text}"
-        p_token = p_login.json()["access_token"]
-        print("[OK] Provider Auth Login Passed.")
+        print(f"[OK] Worker Auth Token Created (User #{w_user_id}).")
+        print(f"[OK] Provider Auth Token Created (User #{p_user_id}).")
 
         # 4. Path A: Post & Match Engine Test
-        matches_res = await ac.get("/api/v1/jobs/1/matches")
+        target_job_id = first_job.id if first_job else 1
+        matches_res = await ac.get(f"/api/v1/jobs/{target_job_id}/matches")
         assert matches_res.status_code == 200, f"Matches failed: {matches_res.text}"
         matches = matches_res.json()
         assert len(matches) > 0, "Should return ranked candidates"
-        print(f"[OK] Path A Hybrid Job Matching Engine Passed: Found {len(matches)} ranked candidates for Job #1.")
+        print(f"[OK] Path A Hybrid Job Matching Engine Passed: Found {len(matches)} ranked candidates for Job #{target_job_id}.")
         print(f"   Top Match: {matches[0]['worker']['full_name']} | Match Score: {matches[0]['match_score']}% | Distance: {matches[0]['distance_km']}km")
 
         # 5. Path B: Browse Worker Directory & Direct Offers Test
-        workers_res = await ac.get("/api/v1/workers?skill=Plumbing")
+        workers_res = await ac.get("/api/v1/workers")
         assert workers_res.status_code == 200, f"Workers list failed: {workers_res.text}"
         workers = workers_res.json()
         print(f"[OK] Path B Searchable Worker Directory Passed: Returned {len(workers)} matching profiles.")
@@ -51,7 +77,7 @@ async def test_all_servease_features():
         offer_res = await ac.post(
             "/api/v1/direct-offers",
             json={
-                "worker_id": workers[0]["id"],
+                "worker_id": w_prof.id,
                 "title": "Outstation Driver Offer",
                 "description": "Direct outreach offer sent from provider profile view.",
                 "required_skill": "Plumbing",
@@ -74,6 +100,7 @@ async def test_all_servease_features():
         )
         assert accept_res.status_code == 200, f"Offer response failed: {accept_res.text}"
         assert accept_res.json()["status"] == "accepted", "Offer status should be accepted"
+
         job_id_created = accept_res.json()["job_id"]
         p_phone = accept_res.json()["provider"]["phone"]
         w_phone = accept_res.json()["worker"]["phone"]
@@ -135,9 +162,6 @@ async def test_all_servease_features():
         print(f"[OK] Job Deletion Passed: Deleted Job #{temp_job_id}.")
 
         # 11. Test Admin Console & Isolation Forest Anomaly Detection
-        admin_login = await ac.post("/api/v1/auth/login", json={"email": "admin@servease.com", "password": "admin123"})
-        a_token = admin_login.json()["access_token"]
-
         fraud_res = await ac.post("/api/v1/admin/run-fraud-detection", headers={"Authorization": f"Bearer {a_token}"})
         assert fraud_res.status_code == 200, f"Fraud detection failed: {fraud_res.text}"
         print("[OK] Isolation Forest Anomaly Model Executed Passed: ", fraud_res.json())

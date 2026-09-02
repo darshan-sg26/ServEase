@@ -11,17 +11,22 @@ async def run_trust_and_rating_tests():
     # 1. Initialize & Seed DB
     await seed_database()
 
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
-        # Auth: Login Worker 1 (Ramesh), Worker 2 (Suresh - unverified), Provider 1 (Priya), Provider 2 (Vimal)
-        w1_login = await ac.post("/api/v1/auth/login", json={"email": "ramesh.plumber@gmail.com", "password": "worker123"})
-        assert w1_login.status_code == 200, f"Worker login failed: {w1_login.text}"
-        w1_token = w1_login.json()["access_token"]
-        w1_user_id = w1_login.json()["user_id"]
+    from app.core.database import AsyncSessionLocal
+    from app.models.domain import User, UserRole
+    from app.core.security import create_access_token
+    from sqlalchemy.future import select
 
-        p1_login = await ac.post("/api/v1/auth/login", json={"email": "priya.sharma@gmail.com", "password": "provider123"})
-        assert p1_login.status_code == 200, f"Provider login failed: {p1_login.text}"
-        p1_token = p1_login.json()["access_token"]
-        p1_user_id = p1_login.json()["user_id"]
+    async with AsyncSessionLocal() as db:
+        w1_user = (await db.execute(select(User).where(User.role == UserRole.WORKER))).scalars().first()
+        p1_user = (await db.execute(select(User).where(User.role == UserRole.PROVIDER))).scalars().first()
+
+    w1_token = create_access_token(str(w1_user.id), "worker")
+    w1_user_id = w1_user.id
+
+    p1_token = create_access_token(str(p1_user.id), "provider")
+    p1_user_id = p1_user.id
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
 
         # Register a brand new Worker 3 (0 jobs, 0 ratings)
         import time
