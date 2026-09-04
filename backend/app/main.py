@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, init_db
 from app.api.v1 import auth, workers, jobs, direct_offers, admin
 
 app = FastAPI(
@@ -21,9 +21,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    # Initialize database tables asynchronously
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Initialize database tables and migrations asynchronously
+    await init_db()
 
 @app.get("/")
 async def root():

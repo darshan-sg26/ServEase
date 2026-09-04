@@ -1,10 +1,11 @@
 import math
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
     Calculates Haversine distance in kilometers between two lat/lng coordinates.
+    Earth radius R = 6371.0 km.
     """
     R = 6371.0  # Earth radius in kilometers
     dlat = math.radians(lat2 - lat1)
@@ -68,32 +69,40 @@ def rank_workers_for_job(
     job_lat: float,
     job_lng: float,
     workers_data: List[Dict[str, Any]],
+    search_radius_km: float = 15.0,
 ) -> List[Dict[str, Any]]:
     """
-    Hybrid ML Job Matching Algorithm with Strict Skill Relevance Gate.
+    Hybrid ML Job Matching Algorithm with Strict Skill Relevance Gate and Dual Radius Constraints:
+    - Worker service radius (worker's operational boundary)
+    - Job search radius (provider's targeted search boundary)
     Calculates match_score = Skill_Gate * (0.50*content_score + 0.25*geo_score + 0.15*trust_factor + 0.10*behavioral)
     """
     ranked = []
 
     for worker in workers_data:
-        w_lat = worker["latitude"]
-        w_lng = worker["longitude"]
-        radius = worker.get("service_radius_km", 15.0)
+        w_lat = worker.get("latitude")
+        w_lng = worker.get("longitude")
+        if w_lat is None or w_lng is None:
+            # Skip workers with no location set
+            continue
+
+        worker_radius = worker.get("service_radius_km", 15.0) or 15.0
+        effective_radius = min(worker_radius, search_radius_km) if search_radius_km and search_radius_km > 0 else worker_radius
 
         # Step 1: Geospatial filter (Haversine radius)
         dist_km = calculate_haversine_distance(job_lat, job_lng, w_lat, w_lng)
-        if dist_km > radius:
+        if dist_km > effective_radius:
             continue
 
         # Step 2: Strict Skill Relevance Gate
         worker_skills = worker.get("skills", [])
         is_relevant, skill_content_score = check_skill_relevance(job_skill, job_title, worker_skills)
         if not is_relevant:
-            # HARD GATE: Worker has zero skills in this domain (e.g. Anita Devi Cooking vs Plumbing job)
+            # HARD GATE: Worker has zero skills in this domain
             continue
 
         # Step 3: Normalized Geo Score (closer = higher score, 0-1)
-        geo_score = max(0.0, 1.0 - (dist_km / radius))
+        geo_score = max(0.0, 1.0 - (dist_km / effective_radius))
 
         # Step 4: Behavioral Score
         completion_rate = worker.get("completion_rate", 0.90)

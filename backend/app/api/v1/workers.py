@@ -1,3 +1,4 @@
+import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,7 +7,10 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
 from app.models.domain import User, WorkerProfile, WorkerSkill, AvailabilityStatus, VerificationStatus, Job, JobStatus
-from app.schemas.domain import WorkerProfileResponse, WorkerProfileUpdate, WorkerSkillCreate, WorkerSkillResponse
+from app.schemas.domain import (
+    WorkerProfileResponse, WorkerProfileUpdate, WorkerLocationUpdate,
+    WorkerSkillCreate, WorkerSkillResponse
+)
 from app.services.ml_matching import calculate_haversine_distance
 from app.services.rating_service import build_worker_profile_response
 
@@ -141,16 +145,48 @@ async def update_my_profile(
         profile.profile_photo_url = data.profile_photo_url
     if data.latitude is not None:
         profile.latitude = data.latitude
+        profile.location_updated_at = datetime.datetime.utcnow()
     if data.longitude is not None:
         profile.longitude = data.longitude
+        profile.location_updated_at = datetime.datetime.utcnow()
     if data.service_radius_km is not None:
         profile.service_radius_km = data.service_radius_km
+    if data.location_name is not None:
+        profile.location_name = data.location_name
     if data.hourly_rate is not None:
         profile.hourly_rate = data.hourly_rate
     if data.languages_spoken is not None:
         profile.languages_spoken = data.languages_spoken
     if data.availability_status is not None:
         profile.availability_status = data.availability_status
+
+    await db.commit()
+    await db.refresh(profile)
+    return await build_worker_profile_response(profile, db)
+
+@router.put("/me/location", response_model=WorkerProfileResponse)
+async def update_my_location(
+    data: WorkerLocationUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Updates authenticated worker's live GPS coordinates, timestamp, and optional location name.
+    """
+    result = await db.execute(
+        select(WorkerProfile)
+        .options(selectinload(WorkerProfile.skills))
+        .where(WorkerProfile.user_id == current_user.id)
+    )
+    profile = result.scalars().first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Worker profile not found for logged in user")
+
+    profile.latitude = data.latitude
+    profile.longitude = data.longitude
+    profile.location_updated_at = datetime.datetime.utcnow()
+    if data.location_name:
+        profile.location_name = data.location_name
 
     await db.commit()
     await db.refresh(profile)

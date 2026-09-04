@@ -80,6 +80,8 @@ class WorkerProfileBase(BaseModel):
     latitude: float = 12.9716
     longitude: float = 77.5946
     service_radius_km: float = 15.0
+    location_name: Optional[str] = None
+    location_updated_at: Optional[datetime] = None
     hourly_rate: float = 350.0
     completed_jobs_count: int = 0
     languages_spoken: List[str] = ["English", "Kannada", "Hindi"]
@@ -94,9 +96,15 @@ class WorkerProfileUpdate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     service_radius_km: Optional[float] = None
+    location_name: Optional[str] = None
     hourly_rate: Optional[float] = None
     languages_spoken: Optional[List[str]] = None
     availability_status: Optional[AvailabilityStatus] = None
+
+class WorkerLocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+    location_name: Optional[str] = None
 
 class WorkerProfileResponse(WorkerProfileBase):
     id: int
@@ -119,6 +127,7 @@ class ProviderProfileResponse(BaseModel):
     profile_photo_url: Optional[str] = None
     default_latitude: float
     default_longitude: float
+    location_name: Optional[str] = None
     avg_rating: Optional[float] = None
     rating_count: int = 0
     class Config:
@@ -128,6 +137,9 @@ class ProviderProfileUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     profile_photo_url: Optional[str] = None
+    default_latitude: Optional[float] = None
+    default_longitude: Optional[float] = None
+    location_name: Optional[str] = None
 
 # Job Schemas (Path A & Shared)
 class JobCreate(BaseModel):
@@ -139,6 +151,8 @@ class JobCreate(BaseModel):
     budget_max: float
     latitude: Optional[float] = 12.9716
     longitude: Optional[float] = 77.5946
+    search_radius_km: Optional[float] = 10.0
+    location_name: Optional[str] = None
     urgency: JobUrgency = JobUrgency.IMMEDIATE
     scheduled_date: Optional[str] = None
 
@@ -155,6 +169,9 @@ class JobResponse(BaseModel):
     budget_max: float
     latitude: float
     longitude: float
+    search_radius_km: float = 10.0
+    location_name: Optional[str] = None
+    distance_km: Optional[float] = None
     urgency: JobUrgency
     scheduled_date: Optional[str]
     source: JobSource
