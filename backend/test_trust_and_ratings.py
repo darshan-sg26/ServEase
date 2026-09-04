@@ -30,6 +30,8 @@ async def run_trust_and_rating_tests():
 
         # Register a brand new Worker 3 (0 jobs, 0 ratings)
         import time
+        from app.models.domain import PendingRegistration
+        from app.services.otp_service import hash_otp
         w3_email = f"newbie_{int(time.time() * 1000)}@gmail.com"
         w3_reg = await ac.post("/api/v1/auth/register", json={
             "email": w3_email,
@@ -38,10 +40,17 @@ async def run_trust_and_rating_tests():
             "role": "worker"
         })
         assert w3_reg.status_code == 200, f"Register failed: {w3_reg.text}"
-        w3_login = await ac.post("/api/v1/auth/login", json={"email": w3_email, "password": "newbiepassword123"})
-        assert w3_login.status_code == 200
-        w3_token = w3_login.json()["access_token"]
-        w3_user_id = w3_login.json()["user_id"]
+
+        # Complete OTP verification
+        async with AsyncSessionLocal() as db:
+            pending = (await db.execute(select(PendingRegistration).where(PendingRegistration.email == w3_email))).scalars().first()
+            pending.otp_hash = hash_otp("111111")
+            await db.commit()
+
+        w3_verify = await ac.post("/api/v1/auth/verify-otp", json={"email": w3_email, "otp": "111111"})
+        assert w3_verify.status_code == 200
+        w3_token = w3_verify.json()["access_token"]
+        w3_user_id = w3_verify.json()["user_id"]
 
         # -------------------------------------------------------------
         # TEST 1: Cold Start Worker Trust Score (0 Completed Jobs)
