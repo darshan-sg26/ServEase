@@ -24,16 +24,12 @@ class Settings(BaseSettings):
         "postgresql://neondb_owner:npg_3snhlV1rYeBA@ep-purple-poetry-axvkyvqd-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require"
     )
     
-    # Gmail SMTP Configuration
-    SMTP_USER: str = os.getenv("SMTP_USER", "servease.dev@gmail.com")
-    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "siityevqxalwwsmr")
-    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "465"))
-    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "ServEase")
-
-    # Optional HTTPS Email API keys (works even if cloud blocks SMTP ports)
-    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
-    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
+    # Google Gmail API OAuth2 Configuration (HTTPS Port 443)
+    GMAIL_CLIENT_ID: str = os.getenv("GMAIL_CLIENT_ID", "345293252389-v8am6fn020elna3jb34spg58jb4mj4e9.apps.googleusercontent.com")
+    GMAIL_CLIENT_SECRET: str = os.getenv("GMAIL_CLIENT_SECRET", "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")
+    GMAIL_REFRESH_TOKEN: str = os.getenv("GMAIL_REFRESH_TOKEN", "1//04jRvGIsvawqcCgYIARAAGAQSNwF-L9IrdEgDdYOC45EPM7K6FgSri5wuMA02QhRFfPJsN2xkQNbpSrKgJW80Zo74Gg8RWz67hik")
+    GMAIL_SENDER_EMAIL: str = os.getenv("GMAIL_SENDER_EMAIL", "servease.dev@gmail.com")
+    GMAIL_FROM_NAME: str = os.getenv("GMAIL_FROM_NAME", "ServEase")
 
     # OTP Configuration
     OTP_EXPIRE_MINUTES: int = int(os.getenv("OTP_EXPIRE_MINUTES", "5"))
