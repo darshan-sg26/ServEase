@@ -15,7 +15,7 @@ from app.schemas.domain import (
     WorkerProfileResponse, ProviderProfileResponse, JobApplicationResponse,
     JobRatingsStatusResponse, RatingSummaryResponse
 )
-from app.services.ml_matching import rank_workers_for_job
+from app.services.ml_matching import rank_workers_for_job, calculate_haversine_distance
 from app.services.trust_engine import compute_and_update_trust_score
 from app.services.rating_service import (
     get_user_rating_stats, build_worker_profile_response, build_provider_profile_response
@@ -75,6 +75,8 @@ async def post_job(
         budget_max=data.budget_max,
         latitude=data.latitude or provider.default_latitude,
         longitude=data.longitude or provider.default_longitude,
+        search_radius_km=data.search_radius_km if (data.search_radius_km and data.search_radius_km > 0) else 10.0,
+        location_name=data.location_name,
         urgency=data.urgency,
         scheduled_date=data.scheduled_date,
         source=JobSource.POSTED,
@@ -94,8 +96,9 @@ async def post_job(
 @router.get("", response_model=List[JobResponse])
 async def list_jobs(
     q: Optional[str] = Query(None, description="Free-text search query across title, description, skill, provider"),
-    near_lat: Optional[float] = None,
-    near_lng: Optional[float] = None,
+    near_lat: Optional[float] = Query(None, description="Caller latitude for proximity distance calculation"),
+    near_lng: Optional[float] = Query(None, description="Caller longitude for proximity distance calculation"),
+    radius_km: Optional[float] = Query(None, description="Max radius distance filter in km"),
     skill: Optional[str] = None,
     status_filter: Optional[JobStatus] = None,
     db: AsyncSession = Depends(get_db)
@@ -129,11 +132,25 @@ async def list_jobs(
             if not all(tok in combined_text for tok in tokens):
                 continue
 
-        responses.append(await _build_job_response(j, db))
+        resp = await _build_job_response(j, db)
+
+        # Proximity distance calculation & radius filtering
+        if near_lat is not None and near_lng is not None and j.latitude is not None and j.longitude is not None:
+            dist = calculate_haversine_distance(near_lat, near_lng, j.latitude, j.longitude)
+            if radius_km is not None and dist > radius_km:
+                continue
+            resp.distance_km = round(dist, 2)
+
+        responses.append(resp)
     return responses
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job_detail(job_id: int, db: AsyncSession = Depends(get_db)):
+async def get_job_detail(
+    job_id: int,
+    near_lat: Optional[float] = Query(None, description="Caller latitude for proximity distance calculation"),
+    near_lng: Optional[float] = Query(None, description="Caller longitude for proximity distance calculation"),
+    db: AsyncSession = Depends(get_db)
+):
     result = await db.execute(
         select(Job)
         .options(
@@ -145,7 +162,10 @@ async def get_job_detail(job_id: int, db: AsyncSession = Depends(get_db)):
     job = result.scalars().first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return await _build_job_response(job, db)
+    resp = await _build_job_response(job, db)
+    if near_lat is not None and near_lng is not None and job.latitude is not None and job.longitude is not None:
+        resp.distance_km = round(calculate_haversine_distance(near_lat, near_lng, job.latitude, job.longitude), 2)
+    return resp
 
 @router.get("/{job_id}/matches", response_model=List[MatchedWorkerResponse])
 async def get_job_matches(job_id: int, db: AsyncSession = Depends(get_db)):
@@ -181,7 +201,8 @@ async def get_job_matches(job_id: int, db: AsyncSession = Depends(get_db)):
         job_skill=job.required_skill,
         job_lat=job.latitude,
         job_lng=job.longitude,
-        workers_data=workers_data
+        workers_data=workers_data,
+        search_radius_km=job.search_radius_km or 15.0
     )
 
     response_list = []

@@ -26,10 +26,14 @@ class Settings(BaseSettings):
     
     # Gmail SMTP Configuration
     SMTP_USER: str = os.getenv("SMTP_USER", "servease.dev@gmail.com")
-    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "siityevqxalwwsmr")
     SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "465"))
     SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "ServEase")
+
+    # Optional HTTPS Email API keys (works even if cloud blocks SMTP ports)
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+    BREVO_API_KEY: str = os.getenv("BREVO_API_KEY", "")
 
     # OTP Configuration
     OTP_EXPIRE_MINUTES: int = int(os.getenv("OTP_EXPIRE_MINUTES", "5"))
