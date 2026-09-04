@@ -24,6 +24,18 @@ class Settings(BaseSettings):
         "postgresql://neondb_owner:npg_3snhlV1rYeBA@ep-purple-poetry-axvkyvqd-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require"
     )
     
+    # Gmail SMTP Configuration
+    SMTP_USER: str = os.getenv("SMTP_USER", "servease.dev@gmail.com")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "ServEase")
+
+    # OTP Configuration
+    OTP_EXPIRE_MINUTES: int = int(os.getenv("OTP_EXPIRE_MINUTES", "5"))
+    OTP_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("OTP_RESEND_COOLDOWN_SECONDS", "60"))
+    OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+    
     @property
     def ASYNC_DATABASE_URL(self) -> str:
         if self.USE_LOCAL_SQLITE:

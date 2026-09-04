@@ -17,6 +17,23 @@ class UserRegister(BaseModel):
     latitude: Optional[float] = 12.9716
     longitude: Optional[float] = 77.5946
 
+class UserRegisterResponse(BaseModel):
+    success: bool = True
+    message: str = "Verification code sent to your email"
+    requires_verification: bool = True
+    email: str
+
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    otp: str
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr
+
+class SimpleResponse(BaseModel):
+    success: bool
+    message: str
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str

@@ -237,6 +237,17 @@ class FraudFlag(Base):
     anomaly_score = Column(Float, nullable=False)
     reason = Column(Text, nullable=False)
     status = Column(SQLEnum(FraudFlagStatus), default=FraudFlagStatus.OPEN)
-    flagged_at = Column(DateTime, default=datetime.datetime.utcnow)
-
     user = relationship("User", back_populates="fraud_flags")
+
+class PendingRegistration(Base):
+    __tablename__ = "pending_registrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    otp_hash = Column(String, nullable=False)
+    otp_expires_at = Column(DateTime, nullable=False)
+    registration_data = Column(JSON, nullable=False)  # Contains password_hash, full_name, role, phone, etc.
+    attempts = Column(Integer, default=0, nullable=False)
+    last_resend_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
