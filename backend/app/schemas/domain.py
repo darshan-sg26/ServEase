@@ -38,6 +38,10 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+    role: Optional[UserRole] = UserRole.WORKER
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
