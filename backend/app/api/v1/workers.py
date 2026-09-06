@@ -39,6 +39,90 @@ async def get_my_worker_profile(
 
     return await build_worker_profile_response(profile, db)
 
+@router.get("/nearby", response_model=List[WorkerProfileResponse])
+async def list_nearby_workers(
+    latitude: Optional[float] = Query(None, ge=-90.0, le=90.0, description="Provider latitude"),
+    longitude: Optional[float] = Query(None, ge=-180.0, le=180.0, description="Provider longitude"),
+    near_lat: Optional[float] = Query(None, ge=-90.0, le=90.0, description="Provider latitude alias"),
+    near_lng: Optional[float] = Query(None, ge=-180.0, le=180.0, description="Provider longitude alias"),
+    radius_km: float = Query(15.0, gt=0, le=100.0, description="Discovery radius in km"),
+    skill: Optional[str] = Query(None, description="Optional skill filter"),
+    query: Optional[str] = Query(None, description="Optional search query"),
+    q: Optional[str] = Query(None, description="Optional search query alias"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Map-Based Worker Discovery:
+    Finds nearby available workers within radius constraints.
+    Computes accurate Haversine distance while applying a privacy-preserving
+    micro-jitter to display coordinates to protect worker residential privacy.
+    """
+    lat = latitude if latitude is not None else near_lat
+    lng = longitude if longitude is not None else near_lng
+    if lat is None or lng is None:
+        raise HTTPException(status_code=422, detail="Both latitude and longitude are required.")
+
+    search_q = query or q
+    stmt = (
+        select(WorkerProfile)
+        .options(selectinload(WorkerProfile.skills), selectinload(WorkerProfile.user))
+        .where(WorkerProfile.availability_status == AvailabilityStatus.AVAILABLE)
+    )
+
+    result = await db.execute(stmt)
+    profiles = result.scalars().all()
+
+    nearby = []
+    for p in profiles:
+        # Exclude unverified or inactive users
+        if p.user and not p.user.is_verified:
+            continue
+
+        # Check search query if provided
+        if search_q and search_q.strip():
+            tokens = [t.lower() for t in search_q.strip().split() if t.strip()]
+            skills_str = " ".join([f"{s.skill_name} {' '.join(s.skill_tags or [])}" for s in p.skills]).lower()
+            combined = f"{p.full_name.lower()} {p.bio.lower() if p.bio else ''} {skills_str}"
+            if not all(tok in combined for tok in tokens):
+                continue
+
+        # Check skill filter if provided
+        if skill and skill.strip():
+            skill_matched = False
+            for s in p.skills:
+                if skill.lower() in s.skill_name.lower() or any(skill.lower() in t.lower() for t in s.skill_tags):
+                    skill_matched = True
+                    break
+            if not skill_matched:
+                continue
+
+        # Calculate exact Haversine distance using true coordinates
+        dist = calculate_haversine_distance(lat, lng, p.latitude, p.longitude)
+
+        # Worker service radius constraint (matches ml_matching logic)
+        worker_radius = p.service_radius_km or 15.0
+        effective_radius = min(worker_radius, radius_km) if radius_km > 0 else worker_radius
+        if dist > effective_radius:
+            continue
+
+        resp = await build_worker_profile_response(p, db)
+        resp.distance_km = round(dist, 2)
+
+        # Privacy protection: mask direct personal phone on discovery map
+        resp.phone = None
+
+        # Privacy protection: deterministic micro-jitter (shifts pin by ~150-250m so exact home is not pinpointed)
+        jitter_lat = ((hash(f"{p.id}_lat") % 100) - 50) * 0.00004
+        jitter_lng = ((hash(f"{p.id}_lng") % 100) - 50) * 0.00004
+        resp.latitude = round(p.latitude + jitter_lat, 4)
+        resp.longitude = round(p.longitude + jitter_lng, 4)
+
+        nearby.append(resp)
+
+    # Sort closest first
+    nearby.sort(key=lambda w: w.distance_km if w.distance_km is not None else 9999.0)
+    return nearby
+
 @router.get("", response_model=List[WorkerProfileResponse])
 async def list_workers(
     q: Optional[str] = Query(None, description="Free-text search query across worker name, skills, bio"),
@@ -88,12 +172,15 @@ async def list_workers(
                 continue
 
         # Geo distance filter
+        dist = None
         if near_lat is not None and near_lng is not None:
             dist = calculate_haversine_distance(near_lat, near_lng, p.latitude, p.longitude)
             if dist > max_distance_km:
                 continue
 
         resp = await build_worker_profile_response(p, db)
+        if dist is not None:
+            resp.distance_km = round(dist, 2)
         filtered.append(resp)
 
     return filtered

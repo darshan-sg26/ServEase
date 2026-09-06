@@ -118,6 +118,7 @@ class WorkerProfileResponse(WorkerProfileBase):
     skills: List[WorkerSkillResponse] = []
     avg_rating: Optional[float] = None
     rating_count: int = 0
+    distance_km: Optional[float] = None
     created_at: datetime
     class Config:
         from_attributes = True

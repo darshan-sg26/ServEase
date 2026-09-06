@@ -525,6 +525,68 @@ class ApiService {
     return [];
   }
 
+  static Future<List<WorkerProfile>> fetchNearbyWorkers({
+    required double lat,
+    required double lng,
+    double radiusKm = 15.0,
+    String? skill,
+    String? query,
+  }) async {
+    try {
+      final params = <String, String>{
+        'latitude': lat.toString(),
+        'longitude': lng.toString(),
+        'radius_km': radiusKm.toString(),
+      };
+      if (skill != null && skill.isNotEmpty) params['skill'] = skill;
+      if (query != null && query.isNotEmpty) params['query'] = query;
+
+      final baseUri = Uri.parse('$formattedBaseUrl/workers/nearby');
+      final uri = baseUri.replace(queryParameters: params);
+
+      final res = await http.get(uri, headers: _headers);
+      if (kDebugMode) print('fetchNearbyWorkers -> Status: ${res.statusCode}');
+      if (res.statusCode == 200) {
+        final List list = jsonDecode(res.body);
+        return list.map((w) => WorkerProfile.fromJson(w)).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) print('fetchNearbyWorkers error: $e');
+    }
+    return [];
+  }
+
+  static Future<List<Job>> fetchNearbyJobs({
+    required double lat,
+    required double lng,
+    double radiusKm = 15.0,
+    String? skill,
+    String? query,
+  }) async {
+    try {
+      final params = <String, String>{
+        'latitude': lat.toString(),
+        'longitude': lng.toString(),
+        'radius_km': radiusKm.toString(),
+      };
+      if (skill != null && skill.isNotEmpty) params['skill'] = skill;
+      if (query != null && query.isNotEmpty) params['query'] = query;
+
+      final baseUri = Uri.parse('$formattedBaseUrl/jobs/nearby');
+      final uri = baseUri.replace(queryParameters: params);
+
+      final res = await http.get(uri, headers: _headers);
+      if (kDebugMode) print('fetchNearbyJobs -> Status: ${res.statusCode}');
+      if (res.statusCode == 200) {
+        final List list = jsonDecode(res.body);
+        return list.map((j) => Job.fromJson(j)).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) print('fetchNearbyJobs error: $e');
+    }
+    return [];
+  }
+
   static Future<List<DirectOffer>> fetchDirectOffers({String? query}) async {
     try {
       final params = <String, String>{};
