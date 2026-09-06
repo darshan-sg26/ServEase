@@ -4,6 +4,7 @@ import '../../core/widgets.dart';
 import '../../models/models.dart';
 import '../../services/api_service.dart';
 import '../../services/location_service.dart';
+import '../map/map_discovery_screen.dart';
 
 class ProviderShell extends StatefulWidget {
   const ProviderShell({super.key});
@@ -231,6 +232,10 @@ class _ProviderShellState extends State<ProviderShell> with WidgetsBindingObserv
                   _buildFindWorkersTab(),
                   _buildPostJobTab(),
                   _buildSentOffersTab(),
+                  MapDiscoveryScreen.forProviderWorkers(
+                    onSelectWorker: (w) => _showWorkerDetailsModal(context, w),
+                    onSendOffer: (w) => _showSendOfferModal(context, w),
+                  ),
                 ],
               ),
       ),
@@ -271,6 +276,11 @@ class _ProviderShellState extends State<ProviderShell> with WidgetsBindingObserv
               icon: Icon(Icons.send_outlined),
               activeIcon: Icon(Icons.send_rounded),
               label: 'Sent Offers',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.map_outlined),
+              activeIcon: Icon(Icons.map_rounded),
+              label: 'Nearby Map',
             ),
           ],
         ),

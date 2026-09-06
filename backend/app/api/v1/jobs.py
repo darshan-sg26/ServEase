@@ -144,6 +144,61 @@ async def list_jobs(
         responses.append(resp)
     return responses
 
+@router.get("/nearby", response_model=List[JobResponse])
+async def get_nearby_jobs(
+    latitude: float = Query(..., ge=-90.0, le=90.0, description="Worker current latitude"),
+    longitude: float = Query(..., ge=-180.0, le=180.0, description="Worker current longitude"),
+    radius_km: float = Query(15.0, gt=0, le=100.0, description="Search radius in kilometers"),
+    skill: Optional[str] = Query(None, description="Optional skill filter"),
+    query: Optional[str] = Query(None, description="Optional text search across title, description, and skill"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns open jobs within the specified radius_km of (latitude, longitude).
+    Single location snapshot query - no live tracking.
+    Computes exact server-side Haversine distance and attaches distance_km.
+    Sorted by closest distance first.
+    """
+    stmt = (
+        select(Job)
+        .options(
+            selectinload(Job.provider),
+            selectinload(Job.worker).selectinload(WorkerProfile.skills)
+        )
+        .where(
+            Job.status == JobStatus.OPEN,
+            Job.latitude.isnot(None),
+            Job.longitude.isnot(None)
+        )
+    )
+
+    if skill and skill.strip():
+        stmt = stmt.where(Job.required_skill.ilike(f"%{skill.strip()}%"))
+
+    result = await db.execute(stmt)
+    jobs = result.scalars().all()
+
+    items_with_distance = []
+    for j in jobs:
+        if query and query.strip():
+            tokens = [t.lower() for t in query.strip().split() if t.strip()]
+            prov_name = j.provider.full_name.lower() if j.provider else ""
+            combined_text = f"{j.title.lower()} {j.description.lower()} {j.required_skill.lower()} {prov_name}"
+            if not all(tok in combined_text for tok in tokens):
+                continue
+
+        dist = calculate_haversine_distance(latitude, longitude, j.latitude, j.longitude)
+        if dist > radius_km:
+            continue
+
+        resp = await _build_job_response(j, db)
+        resp.distance_km = round(dist, 2)
+        items_with_distance.append((dist, resp))
+
+    # Sort closest first
+    items_with_distance.sort(key=lambda x: x[0])
+    return [item[1] for item in items_with_distance]
+
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job_detail(
     job_id: int,

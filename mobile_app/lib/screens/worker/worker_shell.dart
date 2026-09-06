@@ -4,6 +4,7 @@ import '../../core/widgets.dart';
 import '../../models/models.dart';
 import '../../services/api_service.dart';
 import '../../services/location_service.dart';
+import '../map/map_discovery_screen.dart';
 
 class WorkerShell extends StatefulWidget {
   const WorkerShell({super.key});
@@ -261,6 +262,15 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
     );
   }
 
+  Future<void> _handleApplyJob(Job job) async {
+    final ok = await ApiService.applyJob(job.id);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ok ? 'Application submitted! Provider notified.' : 'Application submitted.')),
+    );
+    _loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
     final displayName = _myProfile?.fullName ?? ApiService.currentUserName;
@@ -326,6 +336,10 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
                   _buildHomeTab(),
                   _buildProfileTab(),
                   _buildHistoryTab(),
+                  MapDiscoveryScreen.forWorkerJobs(
+                    onSelectJob: (j) => _showJobDetailsModal(context, j),
+                    onApplyJob: _handleApplyJob,
+                  ),
                 ],
               ),
       ),
@@ -360,6 +374,11 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
               icon: Icon(Icons.history_rounded),
               activeIcon: Icon(Icons.history_toggle_off_rounded),
               label: 'History & Earnings',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.map_outlined),
+              activeIcon: Icon(Icons.map_rounded),
+              label: 'Nearby Map',
             ),
           ],
         ),
@@ -910,18 +929,31 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 AppBadge.status(job.urgency),
-                AppButton(
-                  label: 'Apply Now',
-                  icon: Icons.send_rounded,
-                  onPressed: () async {
-                    final ok = await ApiService.applyJob(job.id);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(ok ? 'Application submitted! Provider notified.' : 'Application submitted.')),
-                      );
-                      _loadData();
-                    }
-                  },
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.map_outlined, color: AppColors.forest900),
+                      tooltip: 'View on Map',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MapDiscoveryScreen.forJob(
+                              job: job,
+                              onApplyJob: _handleApplyJob,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 4),
+                    AppButton(
+                      label: 'Apply Now',
+                      icon: Icons.send_rounded,
+                      onPressed: () => _handleApplyJob(job),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1182,6 +1214,19 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
                 ),
               ),
               const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.map_outlined, color: AppColors.forest900),
+                tooltip: 'View on Map',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MapDiscoveryScreen.forJob(job: job),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 4),
               IconButton(
                 icon: const Icon(Icons.phone_rounded, color: AppColors.forest900),
                 tooltip: 'Contact Provider',
@@ -1831,20 +1876,39 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
               const SizedBox(height: 6),
               Text(job.description, style: const TextStyle(color: AppColors.slate600, height: 1.35, fontSize: 13)),
               const SizedBox(height: 20),
-              AppButton(
-                label: 'Apply for Job',
-                icon: Icons.send_rounded,
-                isFullWidth: true,
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  final ok = await ApiService.applyJob(job.id);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(ok ? 'Application submitted! Provider notified.' : 'Application sent.')),
-                    );
-                    _loadData();
-                  }
-                },
+              Row(
+                children: [
+                  Expanded(
+                    child: AppButton(
+                      label: 'View on Map',
+                      icon: Icons.map_rounded,
+                      isSecondary: true,
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => MapDiscoveryScreen.forJob(
+                              job: job,
+                              onApplyJob: _handleApplyJob,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: AppButton(
+                      label: 'Apply for Job',
+                      icon: Icons.send_rounded,
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _handleApplyJob(job);
+                      },
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

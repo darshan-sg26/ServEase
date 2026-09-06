@@ -72,6 +72,7 @@ class WorkerProfile {
   final List<WorkerSkill> skills;
   final double? avgRating;
   final int ratingCount;
+  final double? distanceKm;
 
   WorkerProfile({
     required this.id,
@@ -95,6 +96,7 @@ class WorkerProfile {
     required this.skills,
     this.avgRating,
     this.ratingCount = 0,
+    this.distanceKm,
   });
 
   String get ratingDisplay {
@@ -126,6 +128,7 @@ class WorkerProfile {
       verificationStatus: json['verification_status'] ?? 'unverified',
       avgRating: (json['avg_rating'] as num?)?.toDouble(),
       ratingCount: json['rating_count'] ?? 0,
+      distanceKm: (json['distance_km'] as num?)?.toDouble(),
       skills: (json['skills'] as List? ?? [])
           .map((s) => WorkerSkill.fromJson(s))
           .toList(),

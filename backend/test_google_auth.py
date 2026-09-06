@@ -12,6 +12,7 @@ Tests:
 8. Missing claims rejection (HTTP 400)
 """
 import asyncio
+import datetime
 import sys
 import os
 from unittest.mock import patch
@@ -33,14 +34,19 @@ async def run_tests():
     # Initialize DB (runs safe migrations)
     await init_db()
 
+    ts = int(datetime.datetime.now().timestamp() * 1000)
+    worker_email = f"google_worker_{ts}@example.com"
+    provider_email = f"google_provider_{ts}@example.com"
+    existing_email = f"existing_account_{ts}@example.com"
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
 
         # TEST 1: New User Registration via Google (Worker)
         print("\n[TEST 1] Google Sign-In for new user (Worker role)...")
         mock_claims_1 = {
-            "sub": "google-user-1001",
-            "email": "google_worker@example.com",
+            "sub": f"google-user-1001-{ts}",
+            "email": worker_email,
             "email_verified": True,
             "name": "Google Worker One",
             "picture": "https://example.com/worker_photo.jpg"
@@ -62,8 +68,8 @@ async def run_tests():
                 u_res = await session.execute(select(User).where(User.id == user_id))
                 u = u_res.scalars().first()
                 assert u is not None
-                assert u.email == "google_worker@example.com"
-                assert u.google_id == "google-user-1001"
+                assert u.email == worker_email
+                assert u.google_id == f"google-user-1001-{ts}"
                 assert u.auth_provider == "google"
                 assert u.is_verified is True
 
@@ -78,8 +84,8 @@ async def run_tests():
         # TEST 2: New User Registration via Google (Provider)
         print("\n[TEST 2] Google Sign-In for new user (Provider role)...")
         mock_claims_2 = {
-            "sub": "google-user-2002",
-            "email": "google_provider@example.com",
+            "sub": f"google-user-2002-{ts}",
+            "email": provider_email,
             "email_verified": True,
             "name": "Google Provider Two",
             "picture": "https://example.com/provider_photo.jpg"
@@ -100,7 +106,7 @@ async def run_tests():
                 u_res = await session.execute(select(User).where(User.id == user_id))
                 u = u_res.scalars().first()
                 assert u is not None
-                assert u.google_id == "google-user-2002"
+                assert u.google_id == f"google-user-2002-{ts}"
                 assert u.is_verified is True
 
                 p_res = await session.execute(select(ProviderProfile).where(ProviderProfile.user_id == user_id))
@@ -116,7 +122,7 @@ async def run_tests():
         async for session in get_db():
             from app.core.security import get_password_hash
             existing_user = User(
-                email="existing_account@example.com",
+                email=existing_email,
                 password_hash=get_password_hash("Secret123"),
                 role="worker",
                 is_verified=False,
@@ -130,8 +136,8 @@ async def run_tests():
             break
 
         mock_claims_3 = {
-            "sub": "google-user-3003",
-            "email": "existing_account@example.com",
+            "sub": f"google-user-3003-{ts}",
+            "email": existing_email,
             "email_verified": True,
             "name": "Linked User",
         }
@@ -149,7 +155,7 @@ async def run_tests():
             async for session in get_db():
                 u_res = await session.execute(select(User).where(User.id == existing_id))
                 u = u_res.scalars().first()
-                assert u.google_id == "google-user-3003"
+                assert u.google_id == f"google-user-3003-{ts}"
                 assert u.is_verified is True
                 print("-> SUCCESS: Account linking confirmed in DB")
                 break
@@ -169,7 +175,7 @@ async def run_tests():
         print("\n[TEST 5] Reject Google login if email linked to different google_id...")
         mock_claims_mismatch = {
             "sub": "different-impostor-sub",
-            "email": "existing_account@example.com",
+            "email": existing_email,
             "email_verified": True,
             "name": "Impostor",
         }
