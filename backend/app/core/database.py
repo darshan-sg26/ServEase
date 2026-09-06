@@ -89,11 +89,22 @@ async def init_db():
                         await conn.execute(text("ALTER TABLE jobs ADD COLUMN search_radius_km FLOAT DEFAULT 10.0;"))
                     if "location_name" not in job_cols:
                         await conn.execute(text("ALTER TABLE jobs ADD COLUMN location_name VARCHAR;"))
+
+                # users migrations
+                res = await conn.execute(text("PRAGMA table_info(users);"))
+                user_cols = [row[1] for row in res.fetchall()]
+                if user_cols:
+                    if "google_id" not in user_cols:
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR;"))
+                    if "auth_provider" not in user_cols:
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN auth_provider VARCHAR DEFAULT 'email';"))
             except Exception:
                 pass
         else:
             # PostgreSQL safe migrations
             try:
+                await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR;"))
+                await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR DEFAULT 'email';"))
                 await conn.execute(text("ALTER TABLE worker_profiles ADD COLUMN IF NOT EXISTS location_name VARCHAR;"))
                 await conn.execute(text("ALTER TABLE worker_profiles ADD COLUMN IF NOT EXISTS location_updated_at TIMESTAMP;"))
                 await conn.execute(text("ALTER TABLE provider_profiles ADD COLUMN IF NOT EXISTS location_name VARCHAR;"))

@@ -70,6 +70,8 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     role = Column(SQLEnum(UserRole), default=UserRole.WORKER, nullable=False)
     is_verified = Column(Boolean, default=False)
+    google_id = Column(String, unique=True, index=True, nullable=True)
+    auth_provider = Column(String, default="email", nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

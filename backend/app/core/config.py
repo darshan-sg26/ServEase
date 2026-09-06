@@ -24,7 +24,8 @@ class Settings(BaseSettings):
         "postgresql://neondb_owner:npg_3snhlV1rYeBA@ep-purple-poetry-axvkyvqd-pooler.c-4.us-east-2.aws.neon.tech/neondb?sslmode=require"
     )
     
-    # Google Gmail API OAuth2 Configuration (HTTPS Port 443)
+    # Google OAuth2 & Gmail Configuration (HTTPS Port 443)
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "345293252389-v8am6fn020elna3jb34spg58jb4mj4e9.apps.googleusercontent.com")
     GMAIL_CLIENT_ID: str = os.getenv("GMAIL_CLIENT_ID", "345293252389-v8am6fn020elna3jb34spg58jb4mj4e9.apps.googleusercontent.com")
     GMAIL_CLIENT_SECRET: str = os.getenv("GMAIL_CLIENT_SECRET", "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")
     GMAIL_REFRESH_TOKEN: str = os.getenv("GMAIL_REFRESH_TOKEN", "1//04jRvGIsvawqcCgYIARAAGAQSNwF-L9IrdEgDdYOC45EPM7K6FgSri5wuMA02QhRFfPJsN2xkQNbpSrKgJW80Zo74Gg8RWz67hik")

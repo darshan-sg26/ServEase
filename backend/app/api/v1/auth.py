@@ -11,7 +11,7 @@ from app.models.domain import (
 )
 from app.schemas.domain import (
     UserRegister, UserRegisterResponse, VerifyOtpRequest, ResendOtpRequest, SimpleResponse,
-    UserLogin, Token, UserResponse, ProviderProfileResponse
+    UserLogin, GoogleAuthRequest, Token, UserResponse, ProviderProfileResponse
 )
 from app.services.otp_service import generate_secure_otp, hash_otp, verify_otp_hash
 from app.services.email_service import send_otp_email
@@ -258,6 +258,121 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
     access_token = create_access_token(subject=user.id, role=user.role.value)
     return Token(access_token=access_token, token_type="bearer", role=user.role.value, user_id=user.id)
+
+@router.post("/google", response_model=Token)
+async def google_auth(data: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Authenticates or registers a user via verified Google ID token.
+    Validates token signature, issuer, and audience using Google's official library.
+    Matches or creates user in database and returns ServEase JWT session.
+    """
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as google_requests
+    import secrets
+
+    # 1. Verify Google ID token using official Google library
+    try:
+        idinfo = id_token.verify_oauth2_token(
+            data.id_token,
+            google_requests.Request(),
+            audience=settings.GOOGLE_CLIENT_ID
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Google ID token: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google authentication token verification failed."
+        )
+
+    # 2. Extract verified Google identity claims
+    google_sub = idinfo.get("sub")
+    email = idinfo.get("email")
+    email_verified = idinfo.get("email_verified", False)
+    name = idinfo.get("name") or (email.split("@")[0].capitalize() if email else "ServEase User")
+    picture = idinfo.get("picture")
+
+    if not google_sub or not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google ID token missing required identity claims."
+        )
+
+    if not email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google account email is not verified."
+        )
+
+    # 3. Find or link user in database
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalars().first()
+
+    if user:
+        # Existing ServEase user with this email
+        if user.google_id is None:
+            # Link Google identity to existing account and mark verified
+            user.google_id = google_sub
+            user.is_verified = True
+            await db.commit()
+            await db.refresh(user)
+        elif user.google_id != google_sub:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This email is already linked to a different Google account."
+            )
+    else:
+        # Create new Google-authenticated user
+        chosen_role = data.role or UserRole.WORKER
+        # Create an unusable random bcrypt hash for Google accounts that don't use passwords
+        random_pwd = secrets.token_urlsafe(32)
+        pwd_hash = get_password_hash(random_pwd)
+
+        user = User(
+            email=email,
+            password_hash=pwd_hash,
+            role=chosen_role,
+            is_verified=True,
+            google_id=google_sub,
+            auth_provider="google",
+            phone="+919876543210"
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+        # Provision role profile
+        if chosen_role == UserRole.WORKER:
+            w_profile = WorkerProfile(
+                user_id=user.id,
+                full_name=name,
+                phone="+919876543210",
+                profile_photo_url=picture,
+                latitude=12.9716,
+                longitude=77.5946,
+                hourly_rate=350.0,
+                skills=[]
+            )
+            db.add(w_profile)
+        elif chosen_role == UserRole.PROVIDER:
+            p_profile = ProviderProfile(
+                user_id=user.id,
+                full_name=name,
+                phone="+919876543210",
+                default_latitude=12.9716,
+                default_longitude=77.5946
+            )
+            db.add(p_profile)
+
+        await db.commit()
+
+    # 4. Issue standard ServEase JWT session token
+    access_token = create_access_token(subject=user.id, role=user.role.value)
+    return Token(access_token=access_token, token_type="bearer", role=user.role.value, user_id=user.id)
+
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
