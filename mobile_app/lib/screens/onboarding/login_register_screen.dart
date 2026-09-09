@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import '../../config/app_config.dart';
 import '../../core/theme.dart';
 import '../../core/widgets.dart';
@@ -19,10 +18,6 @@ class LoginRegisterScreen extends StatefulWidget {
 class _LoginRegisterScreenState extends State<LoginRegisterScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoading = false;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    serverClientId: AppConfig.googleServerClientId,
-    scopes: ['email', 'profile'],
-  );
 
   // Login Controllers
   final _loginEmailCtrl = TextEditingController();
@@ -139,66 +134,6 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> with SingleTi
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(res['message'] ?? 'Registration failed')),
       );
-    }
-  }
-
-  Future<void> _handleGoogleSignIn({String? role}) async {
-    setState(() => _isLoading = true);
-    try {
-      try {
-        await _googleSignIn.signOut();
-      } catch (_) {}
-
-      final GoogleSignInAccount? account = await _googleSignIn.signIn();
-      if (account == null) {
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
-
-      final GoogleSignInAuthentication auth = await account.authentication;
-      final idToken = auth.idToken;
-
-      if (idToken == null || idToken.isEmpty) {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to retrieve Google ID token. Please check Google Cloud configuration.'),
-            ),
-          );
-        }
-        return;
-      }
-
-      final res = await ApiService.googleLogin(
-        idToken: idToken,
-        role: role ?? _selectedRole,
-      );
-
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-
-      if (res['success'] == true) {
-        final assignedRole = res['role'];
-        if (assignedRole == 'worker') {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const WorkerShell()));
-        } else if (assignedRole == 'provider') {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const ProviderShell()));
-        } else if (assignedRole == 'admin') {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminShell()));
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(res['message'] ?? 'Google sign-in failed')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Google Sign-In error: $e')),
-        );
-      }
     }
   }
 
@@ -452,7 +387,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> with SingleTi
 
                             // Tab Content Views
                             SizedBox(
-                              height: 510,
+                              height: 440,
                               child: TabBarView(
                                 controller: _tabController,
                                 children: [
@@ -467,7 +402,7 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> with SingleTi
 
                       const SizedBox(height: 24),
                       const Text(
-                        'VTU Project Phase-1 • Dept. of CSE(AIML)',
+                        'VTU Project Phase-2 • Dept. of CSE(AIML)',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, color: AppColors.slate600),
                       ),
@@ -513,13 +448,6 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> with SingleTi
             isLoading: _isLoading,
             isFullWidth: true,
             onPressed: _handleLogin,
-          ),
-          const SizedBox(height: 18),
-          _buildOrDivider(),
-          const SizedBox(height: 18),
-          _buildGoogleSignInButton(
-            label: 'Continue with Google',
-            role: 'worker',
           ),
           const SizedBox(height: 16),
         ],
@@ -632,92 +560,8 @@ class _LoginRegisterScreenState extends State<LoginRegisterScreen> with SingleTi
             isFullWidth: true,
             onPressed: _handleRegister,
           ),
-          const SizedBox(height: 18),
-          _buildOrDivider(),
-          const SizedBox(height: 18),
-          _buildGoogleSignInButton(
-            label: 'Continue with Google as ${_selectedRole == 'worker' ? 'Worker' : 'Provider'}',
-            role: _selectedRole,
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrDivider() {
-    return const Row(
-      children: [
-        Expanded(child: Divider(color: AppColors.border, thickness: 1)),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            'OR',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: AppColors.slate600,
-              letterSpacing: 1.0,
-            ),
-          ),
-        ),
-        Expanded(child: Divider(color: AppColors.border, thickness: 1)),
-      ],
-    );
-  }
-
-  Widget _buildGoogleSignInButton({required String label, String? role}) {
-    return OutlinedButton(
-      onPressed: _isLoading ? null : () => _handleGoogleSignIn(role: role),
-      style: OutlinedButton.styleFrom(
-        backgroundColor: AppColors.white,
-        foregroundColor: AppColors.ink900,
-        side: const BorderSide(color: AppColors.border, width: 1.2),
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 0,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const GoogleLogo(size: 20),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: 'Sora',
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: AppColors.ink900,
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 }
-
-class GoogleLogo extends StatelessWidget {
-  final double size;
-  const GoogleLogo({super.key, this.size = 20});
-
-  @override
-  Widget build(BuildContext context) {
-    return Image.asset(
-      'assets/google_logo.png',
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-      errorBuilder: (context, error, stackTrace) => Icon(
-        Icons.g_mobiledata_rounded,
-        size: size,
-        color: const Color(0xFF4285F4),
-      ),
-    );
-  }
-}
-
