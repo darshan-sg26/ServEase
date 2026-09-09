@@ -21,21 +21,8 @@ class Settings(BaseSettings):
     # Database URL configuration
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "postgresql://neondb_owner:REDACTED_NEON_PASSWORD@ep-pooler.aws.neon.tech/neondb?sslmode=require"
+        ""
     )
-    
-    # Google OAuth2 & Gmail Configuration (HTTPS Port 443)
-    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "345293252389-v8am6fn020elna3jb34spg58jb4mj4e9.apps.googleusercontent.com")
-    GMAIL_CLIENT_ID: str = os.getenv("GMAIL_CLIENT_ID", "345293252389-v8am6fn020elna3jb34spg58jb4mj4e9.apps.googleusercontent.com")
-    GMAIL_CLIENT_SECRET: str = os.getenv("GMAIL_CLIENT_SECRET", "REDACTED_GOOGLE_CLIENT_SECRET")
-    GMAIL_REFRESH_TOKEN: str = os.getenv("GMAIL_REFRESH_TOKEN", "REDACTED_GMAIL_REFRESH_TOKEN")
-    GMAIL_SENDER_EMAIL: str = os.getenv("GMAIL_SENDER_EMAIL", "servease.dev@gmail.com")
-    GMAIL_FROM_NAME: str = os.getenv("GMAIL_FROM_NAME", "ServEase")
-
-    # OTP Configuration
-    OTP_EXPIRE_MINUTES: int = int(os.getenv("OTP_EXPIRE_MINUTES", "5"))
-    OTP_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("OTP_RESEND_COOLDOWN_SECONDS", "60"))
-    OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
     
     @property
     def ASYNC_DATABASE_URL(self) -> str:

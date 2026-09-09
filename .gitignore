@@ -1,105 +1,239 @@
-# ==========================================
+# ==============================================================================
 # ServEase Master Root .gitignore
-# ==========================================
+# Full-Stack Mobile & Backend Repository
+# (Flutter 3.x / Android / iOS / Web + FastAPI / Python 3.x + NeonDB / PostgreSQL)
+# ==============================================================================
 
-# Environment & Secrets
+# ------------------------------------------------------------------------------
+# 1. Environment Variables & Secret Credentials
+# ------------------------------------------------------------------------------
 .env
+.env.*
 *.env
 !.env.example
+!.env.template
 
-# Database Files
+# Service Accounts, OAuth Tokens & API Secrets
+credentials.json
+token.json
+client_secret*.json
+gmail_token.json
+gmail_credentials.json
+service-account*.json
+firebase-adminsdk*.json
+google-services.json
+GoogleService-Info.plist
+
+# Cryptographic Keys & Certificates
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Android Release Signing Keys & Properties
+*.keystore
+*.jks
+key.properties
+local.properties
+**/android/local.properties
+
+# ------------------------------------------------------------------------------
+# 2. Database Files & Backups
+# ------------------------------------------------------------------------------
 *.db
+*.db-journal
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 backend/servease.db
+servease.db
+*.dump
+*.sql.gz
 
-# Python / FastAPI Backend
+# ------------------------------------------------------------------------------
+# 3. Python & FastAPI Backend
+# ------------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyd
 .Python
+
+# Distribution, Packaging & Wheels
 build/
-develop-eggs/
 dist/
+sdist/
+develop-eggs/
 downloads/
 eggs/
-/lib/
-/lib64/
-!mobile_app/lib/
-!mobile_app/lib/**
-sdist/
-var/
 wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+/lib/
+/lib64/
+
+# Explicitly ensure Flutter mobile_app/lib is NEVER ignored by Python lib rules
+!mobile_app/lib/
+!mobile_app/lib/**
+
+# Testing, Code Coverage & Linting Caches
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
 
 # Virtual Environments
 .venv/
+.venv*/
 venv/
+venv*/
 ENV/
 env/
+env.bak/
+venv.bak/
 
-# Flutter & Dart (Mobile App)
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# ------------------------------------------------------------------------------
+# 4. Flutter & Dart (Cross-Platform Mobile App)
+# ------------------------------------------------------------------------------
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-build/
-mobile_app/build/
 mobile_app/.dart_tool/
 mobile_app/.flutter-plugins
 mobile_app/.flutter-plugins-dependencies
 mobile_app/.pub/
 mobile_app/.pub-cache/
+mobile_app/build/
 
-# Android Build Artifacts
+# Dart Documentation
+doc/api/
+**/doc/api/
+
+# Symbolication & Obfuscation
+app.*.symbols
+app.*.map.json
+
+# ------------------------------------------------------------------------------
+# 5. Android Build Artifacts & Caches
+# ------------------------------------------------------------------------------
 **/android/.gradle/
 **/android/app/build/
 **/android/app/debug/
 **/android/app/profile/
 **/android/app/release/
+**/android/.cxx/
+.cxx/
+GeneratedPluginRegistrant.java
+
+# Compiled Packages & APK Binaries
 *.apk
 *.aab
+*.ap_
+*.dex
+servease.apk
+serveease.apk
 
-# iOS Build Artifacts
+# ------------------------------------------------------------------------------
+# 6. iOS & macOS Build Artifacts
+# ------------------------------------------------------------------------------
 **/ios/Pods/
 **/ios/.symlinks/
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/ephemeral/
 **/ios/Runner.xcworkspace/
 **/ios/Runner.xcodeproj/project.xcworkspace/
 **/ios/Runner.xcodeproj/xcuserdata/
+**/ios/Runner/GeneratedPluginRegistrant.h
+**/ios/Runner/GeneratedPluginRegistrant.m
 
-# Obfuscation & Symbols
-app.*.symbols
-app.*.map.json
+**/macos/Pods/
+**/macos/.symlinks/
+**/macos/Flutter/ephemeral/
+**/macos/Runner.xcworkspace/
+**/macos/Runner.xcodeproj/project.xcworkspace/
+**/macos/Runner.xcodeproj/xcuserdata/
 
-# IDE & Editor Files
+*.dSYM/
+*.dSYM
+
+# ------------------------------------------------------------------------------
+# 7. Web & Desktop Platform Ephemerals (Windows / Linux)
+# ------------------------------------------------------------------------------
+mobile_app/windows/flutter/ephemeral/
+mobile_app/linux/flutter/ephemeral/
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# ------------------------------------------------------------------------------
+# 8. IDE, Editor & Tooling Configs
+# ------------------------------------------------------------------------------
+# Visual Studio Code
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+
+# JetBrains / Android Studio
 .idea/
+mobile_app/.idea/
 *.iml
 *.ipr
 *.iws
+out/
+
+# AI Coding Assistants & Workspace Caches
+.cursor/
+.gemini/
+.claude/
+
+# Temporary, Backup & Swap Files
 *.swp
 *.swo
+*~
+*.bak
+*.tmp
+scratch/
+tmp/
+temp/
 
-# OS Junk Files
+# ------------------------------------------------------------------------------
+# 9. Operating System Junk Files & Logs
+# ------------------------------------------------------------------------------
+# macOS
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
+
+# Windows
 Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Application & Package Manager Logs
 *.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
