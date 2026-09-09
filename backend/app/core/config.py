@@ -18,11 +18,28 @@ class Settings(BaseSettings):
     
     USE_LOCAL_SQLITE: bool = os.getenv("USE_LOCAL_SQLITE", "true").lower() in ("true", "1", "yes")
     
-    # Database URL configuration
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        ""
-    )
+    # Database URL configuration (Loaded exclusively from environment or .env)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    
+    # Google OAuth2 & Gmail API Configuration (Loaded exclusively from environment or .env)
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GMAIL_CLIENT_ID: str = os.getenv("GMAIL_CLIENT_ID", "")
+    GMAIL_CLIENT_SECRET: str = os.getenv("GMAIL_CLIENT_SECRET", "")
+    GMAIL_REFRESH_TOKEN: str = os.getenv("GMAIL_REFRESH_TOKEN", "")
+    GMAIL_SENDER_EMAIL: str = os.getenv("GMAIL_SENDER_EMAIL", "servease.dev@gmail.com")
+    GMAIL_FROM_NAME: str = os.getenv("GMAIL_FROM_NAME", "ServEase")
+
+    # Legacy SMTP Configuration (Fallback if SMTP is used)
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "ServEase")
+
+    # OTP Security Configuration
+    OTP_EXPIRE_MINUTES: int = int(os.getenv("OTP_EXPIRE_MINUTES", "5"))
+    OTP_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("OTP_RESEND_COOLDOWN_SECONDS", "60"))
+    OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
     
     @property
     def ASYNC_DATABASE_URL(self) -> str:
