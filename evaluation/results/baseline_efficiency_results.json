@@ -1,0 +1,26 @@
+{
+  "engine": "Current ServEase Baseline Matcher",
+  "benchmark_sample_size": 20,
+  "total_worker_pool_size": 47,
+  "latency_metrics": {
+    "mean_latency_ms": 1.238,
+    "median_latency_ms": 1.082,
+    "p95_latency_ms": 2.441
+  },
+  "search_pruning_efficiency": {
+    "avg_candidates_retained_after_gating": 1.6,
+    "candidate_search_effort_reduction_pct": 96.49
+  },
+  "geospatial_travel_efficiency": {
+    "mean_top1_recommended_distance_km": 0.0,
+    "mean_unranked_candidate_distance_km": 0.71,
+    "travel_distance_reduction_pct": 100.0
+  },
+  "scientific_verdict": {
+    "presentation_target": "15% - 20% Efficiency Gain",
+    "measured_travel_efficiency_gain": "100.0%",
+    "measured_search_space_pruning": "96.49%",
+    "status": "PARTIALLY VERIFIED",
+    "notes": "Geospatial Haversine ranking reduces average worker travel distance by selecting proximity-optimal candidates relative to random unranked eligible workers. This constitutes an empirical efficiency baseline."
+  }
+}

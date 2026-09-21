@@ -1,0 +1,65 @@
+{
+  "evaluation_conditions": "Identical held-out test split (18 queries, seed=42, 47 candidate workers)",
+  "metrics_comparison": {
+    "precision_at_1": {
+      "baseline": 0.5,
+      "modernized": 0.5,
+      "delta": 0.0,
+      "percentage_change": 0.0
+    },
+    "precision_at_3": {
+      "baseline": 0.1667,
+      "modernized": 0.1667,
+      "delta": 0.0,
+      "percentage_change": 0.0
+    },
+    "precision_at_5": {
+      "baseline": 0.1,
+      "modernized": 0.1,
+      "delta": 0.0,
+      "percentage_change": 0.0
+    },
+    "recall_at_1": {
+      "baseline": 0.5,
+      "modernized": 0.5,
+      "delta": 0.0,
+      "percentage_change": 0.0
+    },
+    "recall_at_3": {
+      "baseline": 0.5,
+      "modernized": 0.5,
+      "delta": 0.0,
+      "percentage_change": 0.0
+    },
+    "recall_at_5": {
+      "baseline": 0.5,
+      "modernized": 0.5,
+      "delta": 0.0,
+      "percentage_change": 0.0
+    },
+    "ndcg_at_3": {
+      "baseline": 0.5,
+      "modernized": 0.5,
+      "delta": 0.0,
+      "percentage_change": 0.0
+    },
+    "ndcg_at_5": {
+      "baseline": 0.5,
+      "modernized": 0.5,
+      "delta": 0.0,
+      "percentage_change": 0.0
+    },
+    "mrr": {
+      "baseline": 0.5,
+      "modernized": 0.5254,
+      "delta": 0.0254,
+      "percentage_change": 5.08
+    },
+    "avg_latency_ms": {
+      "baseline": 1.516,
+      "modernized": 5.978,
+      "delta": 4.462,
+      "percentage_change": 294.33
+    }
+  }
+}

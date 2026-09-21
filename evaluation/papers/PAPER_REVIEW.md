@@ -1,0 +1,36 @@
+# Scientific Paper Review: Methodologies, Metrics & ServEase Relevance
+
+This document provides a systematic review of the foundational and modern research papers in job recommender systems, spatial crowdsourcing, anomaly detection, and explainable AI relevant to ServEase.
+
+> [!CRITICAL]
+> **Strict Scientific Distinction**: Reported results in this table represent performance achieved by the original paper authors on their respective research datasets. **They MUST NOT be cited or conflated as ServEase performance numbers.**
+
+---
+
+## 1. Paper Review Table
+
+| Paper Citation | Year | Problem Addressed | Benchmark Dataset Used | Proposed Methodology | Evaluation Metrics | Reported Paper Result | ServEase Relevance | Implement in ServEase Now? | Future Work? |
+|---|:---:|---|---|---|---|---|---|:---:|:---:|
+| **Upadhyay et al.**<br>*IEEE SMC*<br>DOI: 10.1109/SMC52423.2021.9658757 | 2021 | Lack of explainability in online job recommendations | Open online job postings & candidate profiles | Knowledge Graph (KG) + Named Entity Recognition (NER) for factor-wise explanation generation | BLEU, ROUGE-L, Explanation Fidelity | BLEU: 0.72–0.81, ROUGE-L: 0.76 | High (Factor-level explainability for informal workers and employers) | **Yes** (Lightweight factor explanations) | Full KG construction with Neo4j |
+| **Miao et al.**<br>*IEEE TKDE*<br>DOI: 10.1109/TKDE.2023.3311816 | 2024 | Privacy-preserving task assignment across distributed delivery centers | Real-world spatial crowdsourcing delivery logs | Federated Preference Learning (FPL) with stochastic controlled averaging | Task Assignment Ratio, Response Latency, Privacy Loss | 12%–18% improvement in assignment efficiency; low communication cost | Low/Medium (ServEase operates on a centralized NeonDB/FastAPI backend) | **No** (Federated architecture is unjustified for centralized DB) | Multi-city regional data partitioning |
+| **Xu et al.**<br>*IEEE TKDE*<br>DOI: 10.1109/TKDE.2023.3270293 | 2023 | Shallow linear partitioning limitations in standard Isolation Forest | 15 tabular anomaly benchmarks (ODDS, ADBench) | Deep Isolation Forest (DIF): Random neural network representations + isolation trees | AUC-ROC, AUC-PR, F1 score | AUC-ROC improvement of 4%–11% over standard iForest across benchmarks | High (Direct benchmark alternative to current scikit-learn `IsolationForest`) | **Yes** (Benchmark in anomaly evaluation) | High-dimensional behavioral embedding isolation |
+| **Singla & Verma**<br>*IEEE ICCCNT*<br>DOI: 10.1109/ICCCNT61001.2024.10725124 | 2024 | Over-reliance on strict keywords vs semantic intent in IT resumes | IT Resume & Job Description corpus | Hybrid recommendation: TF-IDF + Cosine Similarity combined with LLM semantic scoring | Precision@K, Cosine Similarity Score | Demonstrates qualitative and quantitative ranking gain over pure keyword matching | High (Directly justifies combining structured skill matching with semantic similarity) | **Yes** (Hybrid structured + semantic reranker) | Fine-tuned domain LLM embeddings |
+| **Rahman et al.**<br>*IEEE ISCI*<br>DOI: 10.1109/ISCI65687.2025.11167386 | 2025 | Centralized reputation bottlenecks in spatial crowdsourcing | Spatial crowdsourcing worker task logs | Decentralized reputation tracking using TinyML on edge devices | Accuracy, Latency, Communication Overhead | >85% reputation prediction accuracy with minimal device energy consumption | Medium (Validates multi-factor reputation and Bayesian trust in spatial tasks) | **Partially** (Incorporate multi-factor trust into ranking) | On-device TinyML scoring in Flutter app |
+| **Vyas et al. (JobMatchAI)**<br>*ACL 2026*<br>DOI: 10.18653/v1/2026.acl-demo.52 | 2026 | Keyword mismatches, opaque matching scores, skill synonyms | JobSearch-XS Benchmark (diverse resumes & jobs) | Transformer embeddings + Skill KG + interpretable utility reranking with factor-wise explanations | Precision@K, Recall@K, NDCG@K, MRR | High candidate recall across skill synonyms; factor-wise transparency | **Highest** (Provides template for ServEase hybrid reranker + factor explanations) | **Yes** (Semantic embedding + canonical skills + factor explanations) | Large-scale multi-hop skill ontology |
+| **Patil et al.**<br>*Survey 2024* | 2024 | Comprehensive survey of AI job recommendation architectures | Industry & academic literature review | Synthesizes content-based, collaborative filtering, deep learning, and fairness | Qualitative taxonomy & comparative synthesis | Highlights data sparsity and explainability as primary open challenges | High (Provides architectural classification taxonomy) | **Yes** (Design guidelines) | Graph neural network extensions |
+| **EAAI Literature Review**<br>*Eng. Appl. Artif. Intell.* | 2026 | Systematic review of job and seeker representations in AI systems | 120+ peer-reviewed papers (2018–2025) | Taxonomy of representation: Knowledge-driven vs Data-driven vs Hybrid | Precision, Recall, Coverage, Diversity, Fairness | Confirms hybrid representation outperforms unimodal models in 89% of studies | **Highest** (The theoretical foundation for modernizing ServEase into a hybrid system) | **Yes** (Foundation for hybrid architecture) | Multi-modal profile representation |
+| **HF-DIF**<br>*Research 2026* | 2026 | Feature redundancy and noise in high-dimensional tabular anomaly detection | Tabular cybersecurity and fraud benchmarks | Hierarchical Feature-Selected Deep Isolation Forest (HF-DIF) | AUC-ROC, AUC-PR, Precision@K | Statistically significant AUC gain over standard DIF on tabular data | Medium (Advanced anomaly detection benchmark methodology) | **Partially** (Benchmark feature selection principles) | Dynamic hierarchical tree pruning |
+| **Fairness in Spatial Crowdsourcing**<br>*IEEE ICDE 2026* | 2026 | Worker starvation and unfair competition in proximity-based assignment | Large-scale ride-hailing & task allocation logs | Competition-balancing task allocation algorithm with Pareto optimality | Gini coefficient, Platform Utility, Worker Retention | Reduces worker starvation by 24% without sacrificing platform throughput | Medium/High (Informal workers suffer from rich-get-richer trust bias) | **No** (Documented as future allocation policy) | Fairness-constrained bipartite matching |
+
+---
+
+## 2. Key Synthesis & Actionable Insights for ServEase
+
+1. **Hybrid Architecture Superiority**: As demonstrated by Singla & Verma (2024), EAAI (2026), and JobMatchAI (ACL 2026), systems combining structured domain rules with semantic vector similarities consistently outperform either approach in isolation.
+2. **Explainability Is Essential**: Upadhyay et al. (2021) and Vyas et al. (2026) emphasize that raw percentage scores without factor breakdown (e.g. "85% match") lead to user distrust. Recommendations must decompose into:
+   - Skill Overlap Factor
+   - Semantic Context Similarity
+   - Geospatial Travel Distance
+   - Trust & Reliability Factor
+   - Operational Availability
+3. **Anomaly vs Fraud Realism**: Xu et al. (2023) and HF-DIF (2026) establish that unsupervised tabular isolation methods produce relative outlier scores, not supervised fraud probabilities. Without labeled ground truth, claiming supervised AUC is unscientific.
