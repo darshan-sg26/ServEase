@@ -65,6 +65,19 @@ class ApiService {
     if (authToken != null) 'Authorization': 'Bearer $authToken',
   };
 
+  static String _parseErrorDetail(http.Response res, String defaultMessage) {
+    try {
+      final err = jsonDecode(res.body);
+      if (err is Map && err['detail'] != null) {
+        return err['detail'].toString();
+      }
+    } catch (_) {}
+    if (res.statusCode >= 500) {
+      return 'Server error (${res.statusCode}). Please try again shortly.';
+    }
+    return '$defaultMessage (${res.statusCode})';
+  }
+
   static Future<Map<String, dynamic>> login(String email, String password) async {
     try {
       final targetUrl = '$formattedBaseUrl/auth/login';
@@ -99,8 +112,7 @@ class ApiService {
 
         return {'success': true, 'role': currentRole};
       } else {
-        final err = jsonDecode(res.body);
-        return {'success': false, 'message': err['detail'] ?? 'Login failed'};
+        return {'success': false, 'message': _parseErrorDetail(res, 'Login failed')};
       }
     } catch (e) {
       if (kDebugMode) print('ApiService.login -> Exception: $e');
@@ -176,8 +188,7 @@ class ApiService {
 
         return {'success': true, 'role': currentRole};
       } else {
-        final err = jsonDecode(res.body);
-        return {'success': false, 'message': err['detail'] ?? 'Google sign-in failed'};
+        return {'success': false, 'message': _parseErrorDetail(res, 'Google sign-in failed')};
       }
     } catch (e) {
       if (kDebugMode) print('ApiService.googleLogin -> Exception: $e');
@@ -217,8 +228,7 @@ class ApiService {
           'message': data['message'] ?? 'Verification code sent to your email',
         };
       } else {
-        final err = jsonDecode(res.body);
-        return {'success': false, 'message': err['detail'] ?? 'Registration failed'};
+        return {'success': false, 'message': _parseErrorDetail(res, 'Registration failed')};
       }
     } catch (e) {
       if (kDebugMode) print('ApiService.register -> Exception: $e');
@@ -257,8 +267,7 @@ class ApiService {
 
         return {'success': true, 'role': currentRole};
       } else {
-        final err = jsonDecode(res.body);
-        return {'success': false, 'message': err['detail'] ?? 'Verification failed'};
+        return {'success': false, 'message': _parseErrorDetail(res, 'Verification failed')};
       }
     } catch (e) {
       if (kDebugMode) print('ApiService.verifyOtp -> Exception: $e');
@@ -277,8 +286,7 @@ class ApiService {
         final data = jsonDecode(res.body);
         return {'success': true, 'message': data['message'] ?? 'New verification code sent'};
       } else {
-        final err = jsonDecode(res.body);
-        return {'success': false, 'message': err['detail'] ?? 'Failed to resend code'};
+        return {'success': false, 'message': _parseErrorDetail(res, 'Failed to resend code')};
       }
     } catch (e) {
       if (kDebugMode) print('ApiService.resendOtp -> Exception: $e');

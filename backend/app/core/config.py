@@ -22,7 +22,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     
     # Google OAuth2 & Gmail API Configuration (Loaded exclusively from environment or .env)
-    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_ID: str = (
+        os.getenv("GOOGLE_CLIENT_ID")
+        or os.getenv("GOOGLE_SERVER_CLIENT_ID")
+        or os.getenv("GMAIL_CLIENT_ID")
+        or ""
+    )
     GMAIL_CLIENT_ID: str = os.getenv("GMAIL_CLIENT_ID", "")
     GMAIL_CLIENT_SECRET: str = os.getenv("GMAIL_CLIENT_SECRET", "")
     GMAIL_REFRESH_TOKEN: str = os.getenv("GMAIL_REFRESH_TOKEN", "")

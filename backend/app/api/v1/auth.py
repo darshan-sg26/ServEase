@@ -1,4 +1,6 @@
+import os
 import datetime
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +20,7 @@ from app.services.email_service import send_otp_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+logger = logging.getLogger(__name__)
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
     payload = decode_access_token(token)
@@ -268,21 +271,61 @@ async def google_auth(data: GoogleAuthRequest, db: AsyncSession = Depends(get_db
     """
     from google.oauth2 import id_token
     from google.auth.transport import requests as google_requests
+    from google.auth import jwt as google_jwt
     import secrets
 
     # 1. Verify Google ID token using official Google library
+    expected_audience = (
+        settings.GOOGLE_CLIENT_ID
+        or os.getenv("GOOGLE_SERVER_CLIENT_ID")
+        or settings.GMAIL_CLIENT_ID
+        or ""
+    )
+
     try:
         idinfo = id_token.verify_oauth2_token(
             data.id_token,
             google_requests.Request(),
-            audience=settings.GOOGLE_CLIENT_ID
+            audience=expected_audience if expected_audience else None
         )
     except ValueError as e:
+        diag_aud = None
+        diag_iss = None
+        diag_exp = None
+        try:
+            unverified_claims = google_jwt.decode(data.id_token, verify=False)
+            diag_aud = unverified_claims.get("aud")
+            diag_iss = unverified_claims.get("iss")
+            diag_exp = unverified_claims.get("exp")
+        except Exception:
+            pass
+
+        logger.warning(
+            f"[GoogleAuth Diagnostic] ValueError during verification: {str(e)} | "
+            f"ExpectedAudience: {expected_audience or '<EMPTY>'} | "
+            f"TokenAudience: {diag_aud} | TokenIssuer: {diag_iss} | TokenExp: {diag_exp}"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid Google ID token: {str(e)}"
         )
     except Exception as e:
+        diag_aud = None
+        diag_iss = None
+        diag_exp = None
+        try:
+            unverified_claims = google_jwt.decode(data.id_token, verify=False)
+            diag_aud = unverified_claims.get("aud")
+            diag_iss = unverified_claims.get("iss")
+            diag_exp = unverified_claims.get("exp")
+        except Exception:
+            pass
+
+        logger.error(
+            f"[GoogleAuth Diagnostic] Unexpected {type(e).__name__} during verification: {str(e)} | "
+            f"ExpectedAudience: {expected_audience or '<EMPTY>'} | "
+            f"TokenAudience: {diag_aud} | TokenIssuer: {diag_iss} | TokenExp: {diag_exp}"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Google authentication token verification failed."
