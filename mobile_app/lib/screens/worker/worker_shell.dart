@@ -1413,11 +1413,39 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
                                 ],
                               ),
                             ),
-                            const AppBadge(
-                              label: 'VERIFIED',
-                              backgroundColor: Color(0xFFE6F7ED),
-                              textColor: AppColors.success,
-                            ),
+                            s.isVerified
+                                ? const AppBadge(
+                                    label: 'VERIFIED',
+                                    backgroundColor: Color(0xFFE6F7ED),
+                                    textColor: AppColors.success,
+                                  )
+                                : s.isPending
+                                    ? const AppBadge(
+                                        label: 'PENDING VERIFICATION',
+                                        backgroundColor: Color(0xFFFEF3C7),
+                                        textColor: Color(0xFFB45309),
+                                      )
+                                    : Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const AppBadge(
+                                            label: 'NOT APPROVED',
+                                            backgroundColor: Color(0xFFFEE2E2),
+                                            textColor: AppColors.error,
+                                          ),
+                                          if (s.rejectionReason != null && s.rejectionReason!.isNotEmpty)
+                                            Padding(
+                                              padding: const EdgeInsets.only(top: 2),
+                                              child: Text(
+                                                s.rejectionReason!,
+                                                style: const TextStyle(fontSize: 10, color: AppColors.error),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
                           ],
                         ),
                       );
@@ -2068,43 +2096,105 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
       backgroundColor: AppColors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Edit Storefront Profile', style: TextStyle(fontFamily: 'Sora', fontSize: 17, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 14),
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Full Name')),
-                const SizedBox(height: 10),
-                TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Phone Number')),
-                const SizedBox(height: 10),
-                TextField(controller: bioCtrl, decoration: const InputDecoration(labelText: 'Storefront Bio')),
-                const SizedBox(height: 10),
-                TextField(controller: rateCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Hourly Rate (₹/hr)')),
-                const SizedBox(height: 18),
-                AppButton(
-                  label: 'Save Profile Changes',
-                  isFullWidth: true,
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    await ApiService.updateWorkerProfile({
-                      'full_name': nameCtrl.text.trim(),
-                      'phone': phoneCtrl.text.trim(),
-                      'bio': bioCtrl.text.trim(),
-                      'hourly_rate': double.tryParse(rateCtrl.text.trim()) ?? 350.0,
-                    });
-                    _loadData();
-                  },
+        bool isSaving = false;
+        String? errorMessage;
+
+        return StatefulBuilder(
+          builder: (modalCtx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20, right: 20, top: 20,
+                bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Edit Storefront Profile', style: TextStyle(fontFamily: 'Sora', fontSize: 17, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 14),
+                    if (errorMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(errorMessage!, style: const TextStyle(color: AppColors.error, fontSize: 12))),
+                          ],
+                        ),
+                      ),
+                    ],
+                    TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Full Name')),
+                    const SizedBox(height: 10),
+                    TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Phone Number')),
+                    const SizedBox(height: 10),
+                    TextField(controller: bioCtrl, decoration: const InputDecoration(labelText: 'Storefront Bio')),
+                    const SizedBox(height: 10),
+                    TextField(controller: rateCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Hourly Rate (₹/hr)')),
+                    const SizedBox(height: 18),
+                    AppButton(
+                      label: isSaving ? 'Saving Changes...' : 'Save Profile Changes',
+                      isLoading: isSaving,
+                      isFullWidth: true,
+                      onPressed: isSaving ? null : () async {
+                        final newName = nameCtrl.text.trim();
+                        if (newName.isEmpty) {
+                          setModalState(() => errorMessage = 'Full Name cannot be empty.');
+                          return;
+                        }
+                        final messenger = ScaffoldMessenger.of(context);
+                        setModalState(() {
+                          isSaving = true;
+                          errorMessage = null;
+                        });
+
+                        final res = await ApiService.updateWorkerProfile({
+                          'full_name': newName,
+                          'phone': phoneCtrl.text.trim(),
+                          'bio': bioCtrl.text.trim(),
+                          'hourly_rate': double.tryParse(rateCtrl.text.trim()) ?? 350.0,
+                        });
+
+                        if (res['success'] == true) {
+                          final updatedProfile = res['profile'] as WorkerProfile?;
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                          }
+                          if (mounted) {
+                            setState(() {
+                              if (updatedProfile != null) {
+                                _myProfile = updatedProfile;
+                              }
+                            });
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Storefront profile updated successfully!'),
+                                backgroundColor: AppColors.success,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                            _loadData(background: true);
+                          }
+                        } else {
+                          setModalState(() {
+                            isSaving = false;
+                            errorMessage = res['message'] ?? 'Failed to update profile. Please try again.';
+                          });
+                        }
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -2121,39 +2211,101 @@ class _WorkerShellState extends State<WorkerShell> with WidgetsBindingObserver, 
       backgroundColor: AppColors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Add Verified Skill', style: TextStyle(fontFamily: 'Sora', fontSize: 17, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 14),
-              TextField(controller: skillCtrl, decoration: const InputDecoration(labelText: 'Skill Name (e.g. Plumbing, Electrician)')),
-              const SizedBox(height: 10),
-              TextField(controller: expCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Years Experience')),
-              const SizedBox(height: 10),
-              TextField(controller: rateCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Hourly Rate (₹/hr)')),
-              const SizedBox(height: 18),
-              AppButton(
-                label: 'Add Skill to Profile',
-                isFullWidth: true,
-                onPressed: () async {
-                  if (skillCtrl.text.trim().isEmpty) return;
-                  Navigator.pop(ctx);
-                  await ApiService.addWorkerSkill({
-                    'skill_name': skillCtrl.text.trim(),
-                    'years_experience': double.tryParse(expCtrl.text.trim()) ?? 1.0,
-                    'hourly_rate': double.tryParse(rateCtrl.text.trim()) ?? 300.0,
-                  });
-                  _loadData();
-                },
+        bool isSubmitting = false;
+        String? errorMessage;
+
+        return StatefulBuilder(
+          builder: (modalCtx, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20, right: 20, top: 20,
+                bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 20,
               ),
-            ],
-          ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Add Skill for Verification', style: TextStyle(fontFamily: 'Sora', fontSize: 17, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Worker-added skills enter a pending review queue and will display as VERIFIED once approved by the Servease Admin team.',
+                      style: TextStyle(fontSize: 12, color: AppColors.slate600),
+                    ),
+                    const SizedBox(height: 14),
+                    if (errorMessage != null) ...[
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(errorMessage!, style: const TextStyle(color: AppColors.error, fontSize: 12))),
+                          ],
+                        ),
+                      ),
+                    ],
+                    TextField(controller: skillCtrl, decoration: const InputDecoration(labelText: 'Skill Name (e.g. Plumbing, Electrician)')),
+                    const SizedBox(height: 10),
+                    TextField(controller: expCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Years Experience')),
+                    const SizedBox(height: 10),
+                    TextField(controller: rateCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Hourly Rate (₹/hr)')),
+                    const SizedBox(height: 18),
+                    AppButton(
+                      label: isSubmitting ? 'Submitting Skill...' : 'Submit Skill for Verification',
+                      isLoading: isSubmitting,
+                      isFullWidth: true,
+                      onPressed: isSubmitting ? null : () async {
+                        final skillName = skillCtrl.text.trim();
+                        if (skillName.isEmpty) {
+                          setModalState(() => errorMessage = 'Please enter a valid skill name.');
+                          return;
+                        }
+                        final messenger = ScaffoldMessenger.of(context);
+                        setModalState(() {
+                          isSubmitting = true;
+                          errorMessage = null;
+                        });
+
+                        final res = await ApiService.addWorkerSkill({
+                          'skill_name': skillName,
+                          'years_experience': double.tryParse(expCtrl.text.trim()) ?? 1.0,
+                          'hourly_rate': double.tryParse(rateCtrl.text.trim()) ?? 300.0,
+                        });
+
+                        if (res['success'] == true) {
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                          }
+                          if (mounted) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Skill submitted! Pending Admin verification.'),
+                                backgroundColor: Color(0xFFD97706),
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                            _loadData();
+                          }
+                        } else {
+                          setModalState(() {
+                            isSubmitting = false;
+                            errorMessage = res['message'] ?? 'Failed to submit skill.';
+                          });
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );

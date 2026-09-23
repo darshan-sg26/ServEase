@@ -90,11 +90,9 @@ def normalize_skill(skill_text: str) -> str:
     return skill_text.strip().title()
 
 # ==============================================================================
-# 2. SEMANTIC TEXT EMBEDDING & VECTOR SPACE MODULE
-# TF-IDF + Sublinear Term Frequency + Cosine Similarity Vector Space.
-# Fits strictly within 512MB RAM (Render Free tier) and executes in < 2ms on CPU.
+# 2. TF-IDF VECTOR SPACE MATCHER (Baseline Semantic Model)
 # ==============================================================================
-class SemanticVectorMatcher:
+class TfidfVectorMatcher:
     def __init__(self):
         self.vectorizer = TfidfVectorizer(
             ngram_range=(1, 2),
@@ -102,36 +100,28 @@ class SemanticVectorMatcher:
             stop_words='english',
             min_df=1
         )
-        self.is_fitted = False
-
-    def fit_corpus(self, corpus: List[str]):
-        if corpus and any(c.strip() for c in corpus):
-            self.vectorizer.fit(corpus)
-            self.is_fitted = True
 
     def compute_similarity(self, query_text: str, candidate_texts: List[str]) -> List[float]:
         if not candidate_texts or not query_text.strip():
             return [0.0] * len(candidate_texts)
-
         try:
-            # Build mini-corpus of query + candidates for robust vector alignment
             all_texts = [query_text] + candidate_texts
             tfidf_mat = self.vectorizer.fit_transform(all_texts)
             query_vec = tfidf_mat[0:1]
             candidate_vecs = tfidf_mat[1:]
             sims = cosine_similarity(query_vec, candidate_vecs)[0]
-            return [round(float(s), 4) for s in sims]
+            return [round(max(0.0, float(s)), 4) for s in sims]
         except Exception:
             return [0.0] * len(candidate_texts)
 
 # ==============================================================================
-# 3. MODERNIZED HYBRID RERANKER
+# 3. MODERNIZED HYBRID RERANKER (Supports Transformer & TF-IDF)
 # ==============================================================================
 class ModernizedHybridMatcher:
     """
     Research-backed hybrid matching engine implementing:
     - Canonical skill taxonomy normalization
-    - TF-IDF vector space semantic similarity
+    - Dense Transformer embeddings (all-MiniLM-L6-v2) or TF-IDF vector space
     - Preserved Haversine geospatial proximity
     - Bayesian trust score integration
     - Operational availability constraint gating
@@ -143,14 +133,21 @@ class ModernizedHybridMatcher:
         weight_skill: float = 0.30,
         weight_geo: float = 0.20,
         weight_trust: float = 0.10,
-        weight_availability: float = 0.05
+        weight_availability: float = 0.05,
+        semantic_backend: str = "transformer"  # "transformer" | "tfidf" | "none"
     ):
         self.w_semantic = weight_semantic
         self.w_skill = weight_skill
         self.w_geo = weight_geo
         self.w_trust = weight_trust
         self.w_avail = weight_availability
-        self.semantic_matcher = SemanticVectorMatcher()
+        self.semantic_backend = semantic_backend
+
+        self.tfidf_matcher = TfidfVectorMatcher()
+        self._transformer_encoder = None
+        if semantic_backend == "transformer":
+            from modernized.semantic_matcher import get_transformer_encoder
+            self._transformer_encoder = get_transformer_encoder()
 
     def rank_workers_for_job(
         self,
@@ -169,7 +166,7 @@ class ModernizedHybridMatcher:
             return []
 
         norm_job_skill = normalize_skill(job_skill) if use_skill_norm else (job_skill or "").strip()
-        job_text = f"{job_title or ''} {job_description or ''} {norm_job_skill}".strip()
+        job_text = f"{job_title or ''}. {job_description or ''}. Required skill: {norm_job_skill}.".strip()
 
         # Step 1: Candidate Retrieval Filter (Radius + Location completeness)
         retrieved_candidates = []
@@ -188,7 +185,6 @@ class ModernizedHybridMatcher:
 
             avail = w.get("availability_status", "AVAILABLE")
             if use_availability_gate and avail == "BUSY":
-                # Availability gating: Deprioritize busy workers
                 avail_score = 0.2
             else:
                 avail_score = 1.0
@@ -203,20 +199,27 @@ class ModernizedHybridMatcher:
         if not retrieved_candidates:
             return []
 
-        # Step 2: Semantic Text Vectorization
+        # Step 2: Semantic Representation
         candidate_texts = []
+        candidate_w_ids = []
         for c in retrieved_candidates:
             w = c["worker"]
-            skills_text = " ".join(
+            skills_text = ", ".join(
                 f"{normalize_skill(s.get('skill_name', '')) if use_skill_norm else s.get('skill_name', '')} "
-                f"{' '.join(s.get('skill_tags', []))}"
+                f"({', '.join(s.get('skill_tags', []))})"
                 for s in w.get("skills", [])
             )
-            w_text = f"{w.get('full_name', '')} {w.get('bio', '')} {skills_text}".strip()
+            w_text = f"{w.get('full_name', '')}. {w.get('bio', '')}. Verified skills: {skills_text}.".strip()
             candidate_texts.append(w_text if w_text else "worker")
+            candidate_w_ids.append(w.get("id"))
 
-        if use_semantic:
-            semantic_scores = self.semantic_matcher.compute_similarity(job_text, candidate_texts)
+        if use_semantic and self.semantic_backend == "transformer":
+            if self._transformer_encoder is None:
+                from modernized.semantic_matcher import get_transformer_encoder
+                self._transformer_encoder = get_transformer_encoder()
+            semantic_scores = self._transformer_encoder.compute_similarity(job_text, candidate_texts)
+        elif use_semantic and self.semantic_backend == "tfidf":
+            semantic_scores = self.tfidf_matcher.compute_similarity(job_text, candidate_texts)
         else:
             semantic_scores = [0.0] * len(retrieved_candidates)
 
@@ -236,14 +239,12 @@ class ModernizedHybridMatcher:
                 for s in worker_skills
             ]
             
-            # Check skill match
             skill_match_score = 0.0
             matched_skill_name = None
             if norm_job_skill and norm_job_skill in norm_worker_skills:
                 skill_match_score = 1.0
                 matched_skill_name = norm_job_skill
             elif worker_skills:
-                # Partial token overlap check
                 job_tokens = set(re.findall(r'\w+', f"{norm_job_skill} {job_title}".lower()))
                 worker_tokens = set()
                 for s in worker_skills:
@@ -254,14 +255,14 @@ class ModernizedHybridMatcher:
                 if overlap:
                     skill_match_score = max(0.5, len(overlap) / max(1, len(job_tokens)))
 
-            # Geospatial Proximity Score (0.0 to 1.0)
+            # Geospatial Proximity Score
             geo_score = max(0.0, 1.0 - (dist_km / effective_radius))
 
-            # Normalized Trust Score (0.0 to 1.0)
+            # Bayesian Trust Score Factor
             raw_trust = w.get("trust_score", 75.0) or 75.0
             trust_factor = min(1.0, max(0.0, raw_trust / 100.0))
 
-            # Hybrid Score Synthesis
+            # Composite Hybrid Score
             final_composite_score = (
                 self.w_semantic * semantic_score +
                 self.w_skill * skill_match_score +
@@ -271,27 +272,27 @@ class ModernizedHybridMatcher:
             )
             final_percentage = round(final_composite_score * 100.0, 2)
 
-            # Generate Factor-Level Human-Readable Explanation
+            # Factor-Level Explanations
             explanations = []
             if matched_skill_name:
-                explanations.append(f"Possesses verified skill: {matched_skill_name}")
+                explanations.append(f"Verified skill match: {matched_skill_name}")
             elif skill_match_score > 0:
-                explanations.append(f"Partial skill overlap ({int(skill_match_score * 100)}%)")
+                explanations.append(f"Partial skill match ({int(skill_match_score * 100)}%)")
             
-            if semantic_score >= 0.3:
-                explanations.append(f"Strong semantic profile alignment ({int(semantic_score * 100)}%)")
-            elif semantic_score > 0.1:
-                explanations.append(f"Relevant background match ({int(semantic_score * 100)}%)")
+            if semantic_score >= 0.4:
+                explanations.append(f"High semantic alignment ({int(semantic_score * 100)}%)")
+            elif semantic_score >= 0.2:
+                explanations.append(f"Relevant background ({int(semantic_score * 100)}%)")
 
             if dist_km <= 5.0:
-                explanations.append(f"Highly local: {dist_km:.1f} km away")
+                explanations.append(f"Local proximity: {dist_km:.1f} km away")
             else:
                 explanations.append(f"Within service radius: {dist_km:.1f} km")
 
             if raw_trust >= 80.0:
-                explanations.append(f"Excellent reputation score ({raw_trust:.1f}/100)")
+                explanations.append(f"High reputation trust ({raw_trust:.1f}/100)")
             elif raw_trust >= 50.0:
-                explanations.append(f"Verified platform standing ({raw_trust:.1f}/100)")
+                explanations.append(f"Verified standing ({raw_trust:.1f}/100)")
 
             if avail_score == 1.0:
                 explanations.append("Immediately available for hire")
@@ -310,6 +311,5 @@ class ModernizedHybridMatcher:
                 "explanation_factors": explanations
             })
 
-        # Sort descending by hybrid match score
         scored_results.sort(key=lambda x: x["match_score"], reverse=True)
         return scored_results

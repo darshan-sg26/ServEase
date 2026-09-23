@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     OTP_EXPIRE_MINUTES: int = int(os.getenv("OTP_EXPIRE_MINUTES", "5"))
     OTP_RESEND_COOLDOWN_SECONDS: int = int(os.getenv("OTP_RESEND_COOLDOWN_SECONDS", "60"))
     OTP_MAX_ATTEMPTS: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+
+    # Recommendation & Matching Engine Mode: "baseline" (default) or "hybrid"
+    MATCHING_MODE: str = os.getenv("MATCHING_MODE", "baseline")
     
     @property
     def ASYNC_DATABASE_URL(self) -> str:

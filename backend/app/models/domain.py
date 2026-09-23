@@ -61,6 +61,11 @@ class FraudFlagStatus(str, enum.Enum):
     REVIEWED = "reviewed"
     DISMISSED = "dismissed"
 
+class SkillStatus(str, enum.Enum):
+    PENDING = "pending"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+
 class User(Base):
     __tablename__ = "users"
 
@@ -113,13 +118,21 @@ class WorkerSkill(Base):
     __tablename__ = "worker_skills"
 
     id = Column(Integer, primary_key=True, index=True)
-    worker_id = Column(Integer, ForeignKey("worker_profiles.id"), nullable=False)
+    worker_id = Column(Integer, ForeignKey("worker_profiles.id"), nullable=False, index=True)
     skill_name = Column(String, nullable=False)
     years_experience = Column(Float, default=1.0)
     hourly_rate = Column(Float, default=300.0)
     skill_tags = Column(JSON, default=list)
+    status = Column(SQLEnum(SkillStatus, values_callable=lambda x: [e.value for e in x]), default=SkillStatus.PENDING, nullable=False, index=True)
+    submitted_at = Column(DateTime, default=datetime.datetime.utcnow)
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    rejection_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     worker = relationship("WorkerProfile", back_populates="skills")
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
 
 class ProviderProfile(Base):
     __tablename__ = "provider_profiles"

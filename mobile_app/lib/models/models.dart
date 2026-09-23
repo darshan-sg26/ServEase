@@ -30,6 +30,10 @@ class WorkerSkill {
   final double yearsExperience;
   final double hourlyRate;
   final List<String> skillTags;
+  final String status; // 'pending', 'verified', 'rejected'
+  final DateTime? submittedAt;
+  final DateTime? reviewedAt;
+  final String? rejectionReason;
 
   WorkerSkill({
     required this.id,
@@ -37,7 +41,15 @@ class WorkerSkill {
     required this.yearsExperience,
     required this.hourlyRate,
     required this.skillTags,
+    this.status = 'verified',
+    this.submittedAt,
+    this.reviewedAt,
+    this.rejectionReason,
   });
+
+  bool get isVerified => status.toLowerCase() == 'verified';
+  bool get isPending => status.toLowerCase() == 'pending';
+  bool get isRejected => status.toLowerCase() == 'rejected';
 
   factory WorkerSkill.fromJson(Map<String, dynamic> json) {
     return WorkerSkill(
@@ -46,6 +58,54 @@ class WorkerSkill {
       yearsExperience: (json['years_experience'] as num?)?.toDouble() ?? 1.0,
       hourlyRate: (json['hourly_rate'] as num?)?.toDouble() ?? 300.0,
       skillTags: List<String>.from(json['skill_tags'] ?? []),
+      status: json['status'] ?? 'verified',
+      submittedAt: json['submitted_at'] != null ? DateTime.tryParse(json['submitted_at']) : null,
+      reviewedAt: json['reviewed_at'] != null ? DateTime.tryParse(json['reviewed_at']) : null,
+      rejectionReason: json['rejection_reason'],
+    );
+  }
+}
+
+class PendingSkillApproval {
+  final int id;
+  final int workerId;
+  final String workerName;
+  final double workerTrustScore;
+  final String skillName;
+  final double yearsExperience;
+  final double hourlyRate;
+  final List<String> skillTags;
+  final String status;
+  final DateTime? submittedAt;
+  final DateTime? createdAt;
+
+  PendingSkillApproval({
+    required this.id,
+    required this.workerId,
+    required this.workerName,
+    required this.workerTrustScore,
+    required this.skillName,
+    required this.yearsExperience,
+    required this.hourlyRate,
+    required this.skillTags,
+    required this.status,
+    this.submittedAt,
+    this.createdAt,
+  });
+
+  factory PendingSkillApproval.fromJson(Map<String, dynamic> json) {
+    return PendingSkillApproval(
+      id: json['id'] ?? 0,
+      workerId: json['worker_id'] ?? 0,
+      workerName: json['worker_name'] ?? 'Worker',
+      workerTrustScore: (json['worker_trust_score'] as num?)?.toDouble() ?? 30.5,
+      skillName: json['skill_name'] ?? '',
+      yearsExperience: (json['years_experience'] as num?)?.toDouble() ?? 1.0,
+      hourlyRate: (json['hourly_rate'] as num?)?.toDouble() ?? 300.0,
+      skillTags: List<String>.from(json['skill_tags'] ?? []),
+      status: json['status'] ?? 'pending',
+      submittedAt: json['submitted_at'] != null ? DateTime.tryParse(json['submitted_at']) : null,
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null,
     );
   }
 }

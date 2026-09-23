@@ -98,6 +98,32 @@ async def init_db():
                         await conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR;"))
                     if "auth_provider" not in user_cols:
                         await conn.execute(text("ALTER TABLE users ADD COLUMN auth_provider VARCHAR DEFAULT 'email';"))
+
+                # worker_skills migrations
+                res = await conn.execute(text("PRAGMA table_info(worker_skills);"))
+                ws_cols = [row[1] for row in res.fetchall()]
+                if ws_cols:
+                    if "status" not in ws_cols:
+                        await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN status VARCHAR DEFAULT 'pending';"))
+                        # Preserve existing legacy skills as verified
+                        await conn.execute(text("UPDATE worker_skills SET status = 'verified' WHERE status IS NULL OR status = 'pending';"))
+                    if "submitted_at" not in ws_cols:
+                        await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN submitted_at TIMESTAMP;"))
+                        await conn.execute(text("UPDATE worker_skills SET submitted_at = CURRENT_TIMESTAMP WHERE submitted_at IS NULL;"))
+                    if "reviewed_at" not in ws_cols:
+                        await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN reviewed_at TIMESTAMP;"))
+                    if "reviewed_by" not in ws_cols:
+                        await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN reviewed_by INTEGER REFERENCES users(id);"))
+                    if "rejection_reason" not in ws_cols:
+                        await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN rejection_reason TEXT;"))
+                    if "created_at" not in ws_cols:
+                        await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN created_at TIMESTAMP;"))
+                        await conn.execute(text("UPDATE worker_skills SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL;"))
+                    if "updated_at" not in ws_cols:
+                        await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN updated_at TIMESTAMP;"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_worker_skills_status ON worker_skills(status);"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_worker_skills_worker_id ON worker_skills(worker_id);"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_worker_skills_reviewed_by ON worker_skills(reviewed_by);"))
             except Exception:
                 pass
         else:
@@ -110,5 +136,17 @@ async def init_db():
                 await conn.execute(text("ALTER TABLE provider_profiles ADD COLUMN IF NOT EXISTS location_name VARCHAR;"))
                 await conn.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS search_radius_km FLOAT DEFAULT 10.0;"))
                 await conn.execute(text("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS location_name VARCHAR;"))
+                # worker_skills migrations
+                await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'pending';"))
+                await conn.execute(text("UPDATE worker_skills SET status = 'verified' WHERE status IS NULL;"))
+                await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+                await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;"))
+                await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES users(id);"))
+                await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN IF NOT EXISTS rejection_reason TEXT;"))
+                await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+                await conn.execute(text("ALTER TABLE worker_skills ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_worker_skills_status ON worker_skills(status);"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_worker_skills_worker_id ON worker_skills(worker_id);"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_worker_skills_reviewed_by ON worker_skills(reviewed_by);"))
             except Exception:
                 pass

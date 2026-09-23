@@ -154,6 +154,19 @@ def _build_html_email(otp: str, recipient_name: str, expire_minutes: int) -> str
 </html>
 """
 
+def check_gmail_api_status() -> dict:
+    """
+    Returns a safe diagnostic dictionary indicating whether Gmail API environment
+    variables are loaded, without exposing secret values or tokens.
+    """
+    return {
+        "GMAIL_CLIENT_ID_configured": bool(settings.GMAIL_CLIENT_ID),
+        "GMAIL_CLIENT_SECRET_configured": bool(settings.GMAIL_CLIENT_SECRET),
+        "GMAIL_REFRESH_TOKEN_configured": bool(settings.GMAIL_REFRESH_TOKEN),
+        "GMAIL_SENDER_EMAIL": settings.GMAIL_SENDER_EMAIL,
+        "GMAIL_FROM_NAME": settings.GMAIL_FROM_NAME,
+    }
+
 def _send_gmail_api_sync(to_email: str, subject: str, html_content: str, text_content: str):
     """
     Synchronous helper executed in thread pool that constructs and dispatches

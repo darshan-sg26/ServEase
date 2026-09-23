@@ -3,7 +3,8 @@ from typing import Optional, List, Any
 from pydantic import BaseModel, EmailStr, Field, model_validator
 from app.models.domain import (
     UserRole, AvailabilityStatus, VerificationStatus, JobUrgency,
-    JobSource, JobStatus, ApplicationStatus, DirectOfferStatus, FraudFlagStatus
+    JobSource, JobStatus, ApplicationStatus, DirectOfferStatus, FraudFlagStatus,
+    SkillStatus
 )
 
 # Auth Schemas
@@ -71,8 +72,34 @@ class WorkerSkillCreate(WorkerSkillBase):
 class WorkerSkillResponse(WorkerSkillBase):
     id: int
     worker_id: int
+    status: str = "pending"
+    submitted_at: Optional[datetime] = None
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[int] = None
+    rejection_reason: Optional[str] = None
+    created_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True
+
+class PendingSkillApprovalResponse(BaseModel):
+    id: int
+    worker_id: int
+    worker_name: str
+    worker_trust_score: float = 30.5
+    skill_name: str
+    years_experience: float
+    hourly_rate: float
+    skill_tags: List[str] = []
+    status: str
+    submitted_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class SkillRejectRequest(BaseModel):
+    reason: Optional[str] = None
 
 # Worker Profile Schemas
 class WorkerProfileBase(BaseModel):

@@ -245,20 +245,62 @@ async def get_job_matches(job_id: int, db: AsyncSession = Depends(get_db)):
             "skills": [
                 {"skill_name": s.skill_name, "skill_tags": s.skill_tags or []}
                 for s in w.skills
+                if getattr(s, 'status', 'verified') in ('verified', 'VERIFIED')
             ],
             "completion_rate": 0.95,
             "acceptance_rate": 0.90
         })
 
-    ranked = rank_workers_for_job(
-        job_title=job.title,
-        job_description=job.description,
-        job_skill=job.required_skill,
-        job_lat=job.latitude,
-        job_lng=job.longitude,
-        workers_data=workers_data,
-        search_radius_km=job.search_radius_km or 15.0
-    )
+    if getattr(settings, "MATCHING_MODE", "baseline").lower() == "hybrid":
+        try:
+            import sys
+            from pathlib import Path
+            root_dir = Path(__file__).resolve().parent.parent.parent.parent.parent
+            if str(root_dir) not in sys.path:
+                sys.path.insert(0, str(root_dir))
+            from evaluation.modernized.hybrid_matcher import HybridMatcher
+            matcher = HybridMatcher(semantic_backend="tfidf")
+            ranked_raw = matcher.rank_workers_for_job(
+                job_title=job.title,
+                job_description=job.description,
+                job_skill=job.required_skill,
+                job_lat=job.latitude,
+                job_lng=job.longitude,
+                workers_data=workers_data,
+                search_radius_km=job.search_radius_km or 15.0
+            )
+            ranked = [
+                {
+                    "worker_profile": item["worker_profile"],
+                    "match_score": item["match_score"],
+                    "distance_km": item["distance_km"],
+                    "content_score": item.get("semantic_score", 0.0),
+                    "geo_score": item.get("geo_score", 0.0),
+                    "behavioral_score": item.get("availability_score", 1.0),
+                    "trust_score_factor": item.get("trust_factor", 0.75)
+                }
+                for item in ranked_raw
+            ]
+        except Exception:
+            ranked = rank_workers_for_job(
+                job_title=job.title,
+                job_description=job.description,
+                job_skill=job.required_skill,
+                job_lat=job.latitude,
+                job_lng=job.longitude,
+                workers_data=workers_data,
+                search_radius_km=job.search_radius_km or 15.0
+            )
+    else:
+        ranked = rank_workers_for_job(
+            job_title=job.title,
+            job_description=job.description,
+            job_skill=job.required_skill,
+            job_lat=job.latitude,
+            job_lng=job.longitude,
+            workers_data=workers_data,
+            search_radius_km=job.search_radius_km or 15.0
+        )
 
     response_list = []
     for r in ranked:

@@ -6,7 +6,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.api.v1.auth import get_current_user
-from app.models.domain import User, WorkerProfile, WorkerSkill, AvailabilityStatus, VerificationStatus, Job, JobStatus
+from app.models.domain import User, UserRole, WorkerProfile, WorkerSkill, AvailabilityStatus, VerificationStatus, Job, JobStatus, SkillStatus
 from app.schemas.domain import (
     WorkerProfileResponse, WorkerProfileUpdate, WorkerLocationUpdate,
     WorkerSkillCreate, WorkerSkillResponse
@@ -81,7 +81,7 @@ async def list_nearby_workers(
         # Check search query if provided
         if search_q and search_q.strip():
             tokens = [t.lower() for t in search_q.strip().split() if t.strip()]
-            skills_str = " ".join([f"{s.skill_name} {' '.join(s.skill_tags or [])}" for s in p.skills]).lower()
+            skills_str = " ".join([f"{s.skill_name} {' '.join(s.skill_tags or [])}" for s in p.skills if getattr(s, 'status', 'verified') == 'verified' or s.status == SkillStatus.VERIFIED]).lower()
             combined = f"{p.full_name.lower()} {p.bio.lower() if p.bio else ''} {skills_str}"
             if not all(tok in combined for tok in tokens):
                 continue
@@ -90,7 +90,8 @@ async def list_nearby_workers(
         if skill and skill.strip():
             skill_matched = False
             for s in p.skills:
-                if skill.lower() in s.skill_name.lower() or any(skill.lower() in t.lower() for t in s.skill_tags):
+                is_v = getattr(s, 'status', 'verified') == 'verified' or s.status == SkillStatus.VERIFIED
+                if is_v and (skill.lower() in s.skill_name.lower() or any(skill.lower() in t.lower() for t in (s.skill_tags or []))):
                     skill_matched = True
                     break
             if not skill_matched:
@@ -154,7 +155,7 @@ async def list_workers(
         # Free-text multi-token search (name, skills, tags, bio)
         if q and q.strip():
             tokens = [t.lower() for t in q.strip().split() if t.strip()]
-            skills_str = " ".join([f"{s.skill_name} {' '.join(s.skill_tags or [])}" for s in p.skills]).lower()
+            skills_str = " ".join([f"{s.skill_name} {' '.join(s.skill_tags or [])}" for s in p.skills if getattr(s, 'status', 'verified') == 'verified' or s.status == SkillStatus.VERIFIED]).lower()
             combined_search_text = f"{p.full_name.lower()} {p.bio.lower() if p.bio else ''} {skills_str}"
             
             # Every token must match at least one attribute of the worker
@@ -165,7 +166,8 @@ async def list_workers(
         if skill and skill.strip():
             skill_matched = False
             for s in p.skills:
-                if skill.lower() in s.skill_name.lower() or any(skill.lower() in t.lower() for t in s.skill_tags):
+                is_v = getattr(s, 'status', 'verified') == 'verified' or s.status == SkillStatus.VERIFIED
+                if is_v and (skill.lower() in s.skill_name.lower() or any(skill.lower() in t.lower() for t in (s.skill_tags or []))):
                     skill_matched = True
                     break
             if not skill_matched:
@@ -218,16 +220,28 @@ async def update_my_profile(
     )
     profile = result.scalars().first()
     if not profile:
-        raise HTTPException(status_code=404, detail="Worker profile not found")
+        if current_user.role == UserRole.WORKER:
+            profile = WorkerProfile(
+                user_id=current_user.id,
+                full_name=data.full_name or "Worker",
+                phone=data.phone or current_user.phone,
+                bio=data.bio,
+                hourly_rate=data.hourly_rate or 350.0,
+            )
+            db.add(profile)
+            await db.flush()
+        else:
+            raise HTTPException(status_code=404, detail="Worker profile not found for logged in user")
 
-    if data.full_name is not None:
-        profile.full_name = data.full_name
+    if data.full_name is not None and data.full_name.strip():
+        profile.full_name = data.full_name.strip()
     if data.bio is not None:
-        profile.bio = data.bio
+        profile.bio = data.bio.strip()
     if data.gender is not None:
         profile.gender = data.gender
     if data.phone is not None:
-        profile.phone = data.phone
+        profile.phone = data.phone.strip()
+        current_user.phone = data.phone.strip()
     if data.profile_photo_url is not None:
         profile.profile_photo_url = data.profile_photo_url
     if data.latitude is not None:
@@ -240,15 +254,24 @@ async def update_my_profile(
         profile.service_radius_km = data.service_radius_km
     if data.location_name is not None:
         profile.location_name = data.location_name
-    if data.hourly_rate is not None:
+    if data.hourly_rate is not None and data.hourly_rate > 0:
         profile.hourly_rate = data.hourly_rate
     if data.languages_spoken is not None:
         profile.languages_spoken = data.languages_spoken
     if data.availability_status is not None:
         profile.availability_status = data.availability_status
 
+    profile.updated_at = datetime.datetime.utcnow()
     await db.commit()
     await db.refresh(profile)
+
+    # Dynamically update completed jobs count
+    jobs_res = await db.execute(
+        select(Job).where((Job.worker_id == profile.id) & (Job.status == JobStatus.COMPLETED))
+    )
+    completed_jobs = jobs_res.scalars().all()
+    profile.completed_jobs_count = len(completed_jobs)
+
     return await build_worker_profile_response(profile, db)
 
 @router.put("/me/location", response_model=WorkerProfileResponse)
@@ -285,17 +308,50 @@ async def add_skill(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == current_user.id))
+    result = await db.execute(
+        select(WorkerProfile)
+        .options(selectinload(WorkerProfile.skills))
+        .where(WorkerProfile.user_id == current_user.id)
+    )
     profile = result.scalars().first()
     if not profile:
         raise HTTPException(status_code=404, detail="Worker profile not found")
 
+    skill_name_clean = skill.skill_name.strip()
+    if not skill_name_clean:
+        raise HTTPException(status_code=400, detail="Skill name cannot be empty")
+
+    # Check for duplicate skill submissions
+    for existing_skill in profile.skills:
+        if existing_skill.skill_name.strip().lower() == skill_name_clean.lower():
+            status_val = str(getattr(existing_skill, 'status', 'verified')).lower()
+            if "verified" in status_val:
+                raise HTTPException(status_code=400, detail="This skill is already added and verified.")
+            elif "pending" in status_val:
+                raise HTTPException(status_code=400, detail="This skill is already pending verification.")
+            elif "rejected" in status_val:
+                # Allow re-submission if previously rejected
+                existing_skill.status = SkillStatus.PENDING
+                existing_skill.years_experience = skill.years_experience
+                existing_skill.hourly_rate = skill.hourly_rate
+                existing_skill.skill_tags = skill.skill_tags
+                existing_skill.submitted_at = datetime.datetime.utcnow()
+                existing_skill.reviewed_at = None
+                existing_skill.reviewed_by = None
+                existing_skill.rejection_reason = None
+                existing_skill.updated_at = datetime.datetime.utcnow()
+                await db.commit()
+                await db.refresh(existing_skill)
+                return existing_skill
+
     new_skill = WorkerSkill(
         worker_id=profile.id,
-        skill_name=skill.skill_name,
+        skill_name=skill_name_clean,
         years_experience=skill.years_experience,
         hourly_rate=skill.hourly_rate,
-        skill_tags=skill.skill_tags
+        skill_tags=skill.skill_tags,
+        status=SkillStatus.PENDING,
+        submitted_at=datetime.datetime.utcnow()
     )
     db.add(new_skill)
     await db.commit()

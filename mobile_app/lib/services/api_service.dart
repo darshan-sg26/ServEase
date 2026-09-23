@@ -330,7 +330,7 @@ class ApiService {
     return null;
   }
 
-  static Future<WorkerProfile?> updateWorkerProfile(Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>> updateWorkerProfile(Map<String, dynamic> body) async {
     try {
       final res = await http.put(
         Uri.parse('$formattedBaseUrl/workers/me'),
@@ -340,12 +340,19 @@ class ApiService {
       if (res.statusCode == 200) {
         final wp = WorkerProfile.fromJson(jsonDecode(res.body));
         currentUserName = wp.fullName;
-        return wp;
+        return {'success': true, 'profile': wp, 'message': 'Profile updated successfully'};
+      } else {
+        String msg = 'Failed to update profile (${res.statusCode})';
+        try {
+          final err = jsonDecode(res.body);
+          if (err['detail'] != null) msg = err['detail'].toString();
+        } catch (_) {}
+        return {'success': false, 'profile': null, 'message': msg};
       }
     } catch (e) {
       if (kDebugMode) print('updateWorkerProfile error: $e');
+      return {'success': false, 'profile': null, 'message': 'Network error ($e)'};
     }
-    return null;
   }
 
   static Future<WorkerProfile?> updateWorkerLocation(double lat, double lng, {String? locationName}) async {
@@ -370,18 +377,28 @@ class ApiService {
     return null;
   }
 
-  static Future<bool> addWorkerSkill(Map<String, dynamic> skillData) async {
+  static Future<Map<String, dynamic>> addWorkerSkill(Map<String, dynamic> skillData) async {
     try {
       final res = await http.post(
         Uri.parse('$formattedBaseUrl/workers/me/skills'),
         headers: _headers,
         body: jsonEncode(skillData),
       );
-      return res.statusCode == 200 || res.statusCode == 201;
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        final skill = WorkerSkill.fromJson(jsonDecode(res.body));
+        return {'success': true, 'skill': skill, 'message': 'Skill submitted for admin verification'};
+      } else {
+        String msg = 'Failed to submit skill (${res.statusCode})';
+        try {
+          final err = jsonDecode(res.body);
+          if (err['detail'] != null) msg = err['detail'].toString();
+        } catch (_) {}
+        return {'success': false, 'skill': null, 'message': msg};
+      }
     } catch (e) {
       if (kDebugMode) print('addWorkerSkill error: $e');
+      return {'success': false, 'skill': null, 'message': 'Network error ($e)'};
     }
-    return false;
   }
 
   static Future<bool> postJob(Map<String, dynamic> jobData) async {
@@ -671,6 +688,67 @@ class ApiService {
       if (kDebugMode) print('fetchFraudFlags error: $e');
     }
     return [];
+  }
+
+  static Future<List<PendingSkillApproval>> fetchPendingSkillApprovals() async {
+    try {
+      final res = await http.get(
+        Uri.parse('$formattedBaseUrl/admin/skill-approvals'),
+        headers: _headers,
+      );
+      if (res.statusCode == 200) {
+        final List list = jsonDecode(res.body);
+        return list.map((item) => PendingSkillApproval.fromJson(item)).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) print('fetchPendingSkillApprovals error: $e');
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> approveSkill(int skillId) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$formattedBaseUrl/admin/skill-approvals/$skillId/approve'),
+        headers: _headers,
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        return {'success': true, 'message': data['message'] ?? 'Skill approved and verified'};
+      } else {
+        String msg = 'Failed to approve skill';
+        try {
+          final err = jsonDecode(res.body);
+          if (err['detail'] != null) msg = err['detail'].toString();
+        } catch (_) {}
+        return {'success': false, 'message': msg};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error ($e)'};
+    }
+  }
+
+  static Future<Map<String, dynamic>> rejectSkill(int skillId, {String? reason}) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$formattedBaseUrl/admin/skill-approvals/$skillId/reject'),
+        headers: _headers,
+        body: jsonEncode({if (reason != null && reason.isNotEmpty) 'reason': reason}),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        return {'success': true, 'message': data['message'] ?? 'Skill rejected'};
+      } else {
+        String msg = 'Failed to reject skill';
+        try {
+          final err = jsonDecode(res.body);
+          if (err['detail'] != null) msg = err['detail'].toString();
+        } catch (_) {}
+        return {'success': false, 'message': msg};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error ($e)'};
+    }
   }
 
   static Future<Map<String, dynamic>> submitRating({

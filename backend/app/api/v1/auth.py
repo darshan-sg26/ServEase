@@ -41,10 +41,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     """
     Step 1 of Registration: Validates input, hashes password, saves pending registration,
-    and sends a 6-digit verification OTP to the user's email via Gmail SMTP.
+    and sends a 6-digit verification OTP to the user's email via Gmail API over HTTPS.
     """
+    # 0. Canonical email normalization
+    email = data.email.strip().lower()
+
     # 1. Check if email is already registered in permanent users table
-    result = await db.execute(select(User).where(User.email == data.email))
+    result = await db.execute(select(User).where(User.email == email))
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="An account with this email already exists. Please sign in.")
 
@@ -60,7 +63,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     # 4. Hash user password securely with bcrypt before staging
     pwd_hash = get_password_hash(data.password)
     staged_payload = {
-        "email": data.email,
+        "email": email,
         "password_hash": pwd_hash,
         "role": data.role.value,
         "full_name": data.full_name,
@@ -71,7 +74,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     }
 
     # 5. Check if pending registration already exists for this email
-    pending_res = await db.execute(select(PendingRegistration).where(PendingRegistration.email == data.email))
+    pending_res = await db.execute(select(PendingRegistration).where(PendingRegistration.email == email))
     pending = pending_res.scalars().first()
 
     if pending:
@@ -82,7 +85,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         pending.last_resend_at = datetime.datetime.utcnow()
     else:
         pending = PendingRegistration(
-            email=data.email,
+            email=email,
             otp_hash=otp_digest,
             otp_expires_at=expiry,
             registration_data=staged_payload,
@@ -91,26 +94,27 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         )
         db.add(pending)
 
-    # 6. Send OTP Email via Gmail SMTP
+    # 6. Send OTP Email via Gmail API over HTTPS
     try:
         await send_otp_email(
-            to_email=data.email,
+            to_email=email,
             otp=plain_otp,
             recipient_name=data.full_name
         )
     except Exception as e:
+        logger.error(f"Failed to dispatch OTP verification email to {email}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send verification email: {str(e)}"
+            detail="Unable to send verification email. Please check server email service configuration or try again shortly."
         )
 
     await db.commit()
 
     return UserRegisterResponse(
         success=True,
-        message=f"Verification code sent to {data.email}",
+        message=f"Verification code sent to {email}",
         requires_verification=True,
-        email=data.email
+        email=email
     )
 
 @router.post("/verify-otp", response_model=Token)
@@ -120,8 +124,10 @@ async def verify_otp(data: VerifyOtpRequest, db: AsyncSession = Depends(get_db))
     creates the permanent User & Profile in the database, cleans up pending data,
     and returns an authenticated JWT session.
     """
+    email = data.email.strip().lower()
+
     # 1. Fetch pending registration
-    pending_res = await db.execute(select(PendingRegistration).where(PendingRegistration.email == data.email))
+    pending_res = await db.execute(select(PendingRegistration).where(PendingRegistration.email == email))
     pending = pending_res.scalars().first()
 
     if not pending:
@@ -153,7 +159,7 @@ async def verify_otp(data: VerifyOtpRequest, db: AsyncSession = Depends(get_db))
     role = UserRole(reg["role"])
 
     # Double check email availability
-    existing_user_res = await db.execute(select(User).where(User.email == data.email))
+    existing_user_res = await db.execute(select(User).where(User.email == email))
     if existing_user_res.scalars().first():
         await db.delete(pending)
         await db.commit()
@@ -209,7 +215,9 @@ async def resend_otp(data: ResendOtpRequest, db: AsyncSession = Depends(get_db))
     """
     Resends a new 6-digit OTP code to the pending user's email, enforcing a 60-second cooldown.
     """
-    pending_res = await db.execute(select(PendingRegistration).where(PendingRegistration.email == data.email))
+    email = data.email.strip().lower()
+
+    pending_res = await db.execute(select(PendingRegistration).where(PendingRegistration.email == email))
     pending = pending_res.scalars().first()
 
     if not pending:
@@ -235,18 +243,19 @@ async def resend_otp(data: ResendOtpRequest, db: AsyncSession = Depends(get_db))
     # Dispatch email
     recipient_name = pending.registration_data.get("full_name", "")
     try:
-        await send_otp_email(to_email=data.email, otp=plain_otp, recipient_name=recipient_name)
+        await send_otp_email(to_email=email, otp=plain_otp, recipient_name=recipient_name)
     except Exception as e:
+        logger.error(f"Failed to resend OTP verification email to {email}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send verification email: {str(e)}"
+            detail="Unable to send verification email. Please check server email service configuration or try again shortly."
         )
 
     await db.commit()
 
     return SimpleResponse(
         success=True,
-        message=f"A fresh verification code has been sent to {data.email}."
+        message=f"A fresh verification code has been sent to {email}."
     )
 
 @router.post("/login", response_model=Token)
@@ -254,7 +263,9 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     """
     Authenticates an existing verified user with email and password.
     """
-    result = await db.execute(select(User).where(User.email == data.email))
+    email = data.email.strip().lower()
+
+    result = await db.execute(select(User).where(User.email == email))
     user = result.scalars().first()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
@@ -333,7 +344,8 @@ async def google_auth(data: GoogleAuthRequest, db: AsyncSession = Depends(get_db
 
     # 2. Extract verified Google identity claims
     google_sub = idinfo.get("sub")
-    email = idinfo.get("email")
+    raw_email = idinfo.get("email")
+    email = raw_email.strip().lower() if raw_email else None
     email_verified = idinfo.get("email_verified", False)
     name = idinfo.get("name") or (email.split("@")[0].capitalize() if email else "ServEase User")
     picture = idinfo.get("picture")

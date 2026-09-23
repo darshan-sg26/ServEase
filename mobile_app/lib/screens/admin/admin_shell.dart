@@ -14,6 +14,7 @@ class AdminShell extends StatefulWidget {
 class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
   PlatformAnalytics? _analytics;
   List<FraudFlag> _fraudFlags = [];
+  List<PendingSkillApproval> _pendingSkills = [];
   bool _isLoading = true;
   bool _isFetching = false;
 
@@ -44,12 +45,16 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
       setState(() => _isLoading = true);
     }
     try {
-      final a = await ApiService.fetchAnalytics();
-      final f = await ApiService.fetchFraudFlags();
+      final results = await Future.wait([
+        ApiService.fetchAnalytics(),
+        ApiService.fetchFraudFlags(),
+        ApiService.fetchPendingSkillApprovals(),
+      ]);
       if (mounted) {
         setState(() {
-          _analytics = a;
-          _fraudFlags = f;
+          _analytics = results[0] as PlatformAnalytics?;
+          _fraudFlags = results[1] as List<FraudFlag>;
+          _pendingSkills = results[2] as List<PendingSkillApproval>;
           _isLoading = false;
         });
       }
@@ -209,6 +214,123 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
 
                         const SizedBox(height: 20),
 
+                        // Skill Verification Queue Section
+                        AppSectionHeader(
+                          title: 'Skill Verification Queue',
+                          subtitle: 'Worker-submitted custom skills awaiting administrative approval',
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_pendingSkills.isNotEmpty)
+                                AppBadge(
+                                  label: '${_pendingSkills.length} Pending',
+                                  backgroundColor: const Color(0xFFFEF3C7),
+                                  textColor: const Color(0xFFB45309),
+                                ),
+                              IconButton(
+                                icon: const Icon(Icons.refresh_rounded, color: AppColors.forest900, size: 20),
+                                onPressed: () => _loadAdminData(background: true),
+                                tooltip: 'Refresh Skills',
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _pendingSkills.isEmpty
+                            ? const AppEmptyState(
+                                icon: Icons.verified_user_rounded,
+                                title: 'All Skills Verified',
+                                description: 'Zero worker skills pending verification. Queue is completely clear.',
+                              )
+                            : ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: _pendingSkills.length,
+                                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                                itemBuilder: (context, index) {
+                                  final skill = _pendingSkills[index];
+                                  return AppCard(
+                                    padding: const EdgeInsets.all(14),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(8),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.cream100,
+                                                borderRadius: BorderRadius.circular(10),
+                                              ),
+                                              child: const Icon(Icons.handyman_rounded, color: AppColors.forest900, size: 20),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    skill.skillName,
+                                                    style: const TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.bold, fontSize: 15),
+                                                  ),
+                                                  const SizedBox(height: 3),
+                                                  Text(
+                                                    'Worker: ${skill.workerName} (Worker #${skill.workerId})',
+                                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.ink900),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    '${skill.yearsExperience.toStringAsFixed(1)} yrs exp • ₹${skill.hourlyRate.toInt()}/hr',
+                                                    style: const TextStyle(fontSize: 12, color: AppColors.slate600),
+                                                  ),
+                                                  if (skill.skillTags.isNotEmpty) ...[
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      'Tags: ${skill.skillTags.join(", ")}',
+                                                      style: const TextStyle(fontSize: 11, color: AppColors.slate600, fontStyle: FontStyle.italic),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                            AppBadge.trustScore(skill.workerTrustScore),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        const Divider(height: 1, color: AppColors.border),
+                                        const SizedBox(height: 10),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.end,
+                                          children: [
+                                            TextButton.icon(
+                                              icon: const Icon(Icons.close_rounded, size: 16, color: AppColors.error),
+                                              label: const Text('Reject', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+                                              onPressed: () => _showRejectDialog(context, skill),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            ElevatedButton.icon(
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppColors.success,
+                                                foregroundColor: AppColors.white,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                              ),
+                                              icon: const Icon(Icons.check_rounded, size: 16),
+                                              label: const Text('Approve', style: TextStyle(fontWeight: FontWeight.bold)),
+                                              onPressed: () => _handleApproveSkill(skill),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+
+                        const SizedBox(height: 20),
+
                         // Isolation Forest Fraud Detection Queue
                         AppSectionHeader(
                           title: 'Security & Anomaly Queue',
@@ -280,6 +402,92 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
                 ),
               ),
       ),
+    );
+  }
+
+  Future<void> _handleApproveSkill(PendingSkillApproval skill) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final res = await ApiService.approveSkill(skill.id);
+    if (!mounted) return;
+    if (res['success'] == true) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text("Skill '${skill.skillName}' approved and verified!"),
+          backgroundColor: AppColors.success,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      _loadAdminData(background: true);
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(res['message'] ?? 'Failed to approve skill'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  void _showRejectDialog(BuildContext context, PendingSkillApproval skill) {
+    final reasonCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text("Reject Skill: ${skill.skillName}"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Are you sure you want to reject this custom skill for ${skill.workerName}?",
+                style: const TextStyle(fontSize: 13, color: AppColors.slate600),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Optional Rejection Reason',
+                  hintText: 'e.g. Insufficient experience or proof',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: AppColors.white),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(ctx);
+                final res = await ApiService.rejectSkill(skill.id, reason: reasonCtrl.text.trim());
+                if (!mounted) return;
+                if (res['success'] == true) {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text("Skill '${skill.skillName}' rejected."),
+                      backgroundColor: AppColors.error,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                  _loadAdminData(background: true);
+                } else {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(res['message'] ?? 'Failed to reject skill'),
+                      backgroundColor: AppColors.error,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Confirm Reject'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

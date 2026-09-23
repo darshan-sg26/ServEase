@@ -2,8 +2,8 @@
   "test_split_size": 18,
   "random_seed": 42,
   "models": {
-    "Model A (Baseline Matcher)": {
-      "description": "Rule-based keyword gate + deterministic 0.50/0.25/0.15/0.10 weighting",
+    "Model A (Current Baseline)": {
+      "description": "Deterministic rule-based keyword gate (0.50/0.25/0.15/0.10)",
       "metrics": {
         "sample_count": 18,
         "precision_at_1": 0.5,
@@ -15,12 +15,12 @@
         "ndcg_at_3": 0.5,
         "ndcg_at_5": 0.5,
         "mrr": 0.5,
-        "avg_latency_ms": 1.906,
-        "median_latency_ms": 1.945
+        "avg_latency_ms": 0.771,
+        "median_latency_ms": 0.654
       }
     },
-    "Model B (+ Semantic Similarity)": {
-      "description": "Baseline structure + TF-IDF vector cosine similarity between job & worker",
+    "Model B (Baseline + TF-IDF)": {
+      "description": "Baseline + sublinear TF-IDF unigram/bigram cosine similarity",
       "metrics": {
         "sample_count": 18,
         "precision_at_1": 0.5,
@@ -32,12 +32,12 @@
         "ndcg_at_3": 0.5,
         "ndcg_at_5": 0.5,
         "mrr": 0.5254,
-        "avg_latency_ms": 7.398,
-        "median_latency_ms": 6.595
+        "avg_latency_ms": 3.075,
+        "median_latency_ms": 2.292
       }
     },
-    "Model C (+ Skill Normalization)": {
-      "description": "Model B + Canonical skill taxonomy normalization (ESCO/O*NET lightweight)",
+    "Model C (Baseline + Transformer)": {
+      "description": "Baseline + 384-dim dense all-MiniLM-L6-v2 embeddings",
       "metrics": {
         "sample_count": 18,
         "precision_at_1": 0.5,
@@ -48,13 +48,13 @@
         "recall_at_5": 0.5,
         "ndcg_at_3": 0.5,
         "ndcg_at_5": 0.5,
-        "mrr": 0.5254,
-        "avg_latency_ms": 5.782,
-        "median_latency_ms": 5.435
+        "mrr": 0.5313,
+        "avg_latency_ms": 573.899,
+        "median_latency_ms": 569.232
       }
     },
-    "Model D (+ Availability Gating)": {
-      "description": "Model C + Operational availability status penalty for BUSY workers",
+    "Model D (Transformer + Trust)": {
+      "description": "Sentence-Transformer semantic similarity + Bayesian trust weighting",
       "metrics": {
         "sample_count": 18,
         "precision_at_1": 0.5,
@@ -65,13 +65,13 @@
         "recall_at_5": 0.5,
         "ndcg_at_3": 0.5,
         "ndcg_at_5": 0.5,
-        "mrr": 0.5254,
-        "avg_latency_ms": 5.917,
-        "median_latency_ms": 6.043
+        "mrr": 0.5206,
+        "avg_latency_ms": 539.88,
+        "median_latency_ms": 536.112
       }
     },
-    "Model E (Full Hybrid Matcher)": {
-      "description": "Full research-backed hybrid system: Semantic + Canonical Skills + Geo + Trust + Availability + Explainability",
+    "Model E (Transformer + Geo)": {
+      "description": "Sentence-Transformer semantic similarity + Haversine geospatial proximity",
       "metrics": {
         "sample_count": 18,
         "precision_at_1": 0.5,
@@ -82,15 +82,49 @@
         "recall_at_5": 0.5,
         "ndcg_at_3": 0.5,
         "ndcg_at_5": 0.5,
-        "mrr": 0.5254,
-        "avg_latency_ms": 6.489,
-        "median_latency_ms": 6.858
+        "mrr": 0.5346,
+        "avg_latency_ms": 598.117,
+        "median_latency_ms": 558.67
+      }
+    },
+    "Model F (Transformer + Skill Norm)": {
+      "description": "Model C + Canonical skill concept normalization (ESCO/O*NET taxonomy)",
+      "metrics": {
+        "sample_count": 18,
+        "precision_at_1": 0.5,
+        "precision_at_3": 0.1667,
+        "precision_at_5": 0.1,
+        "recall_at_1": 0.5,
+        "recall_at_3": 0.5,
+        "recall_at_5": 0.5,
+        "ndcg_at_3": 0.5,
+        "ndcg_at_5": 0.5,
+        "mrr": 0.5313,
+        "avg_latency_ms": 513.63,
+        "median_latency_ms": 499.788
+      }
+    },
+    "Model G (Full Hybrid Matcher)": {
+      "description": "Full Hybrid: Transformer + Canonical Skills + Geo + Trust + Availability + Factor Explanations",
+      "metrics": {
+        "sample_count": 18,
+        "precision_at_1": 0.5,
+        "precision_at_3": 0.1667,
+        "precision_at_5": 0.1,
+        "recall_at_1": 0.5,
+        "recall_at_3": 0.5,
+        "recall_at_5": 0.5,
+        "ndcg_at_3": 0.5,
+        "ndcg_at_5": 0.5,
+        "mrr": 0.5313,
+        "avg_latency_ms": 561.015,
+        "median_latency_ms": 553.412
       }
     }
   },
   "comparative_summary": [
     {
-      "model": "Model A (Baseline Matcher)",
+      "model": "Model A (Current Baseline)",
       "precision_at_1": 0.5,
       "delta_p1": 0.0,
       "precision_at_5": 0.1,
@@ -100,10 +134,11 @@
       "ndcg_at_5": 0.5,
       "mrr": 0.5,
       "delta_mrr": 0.0,
-      "avg_latency_ms": 1.906
+      "pct_mrr_change": 0.0,
+      "avg_latency_ms": 0.771
     },
     {
-      "model": "Model B (+ Semantic Similarity)",
+      "model": "Model B (Baseline + TF-IDF)",
       "precision_at_1": 0.5,
       "delta_p1": 0.0,
       "precision_at_5": 0.1,
@@ -113,10 +148,11 @@
       "ndcg_at_5": 0.5,
       "mrr": 0.5254,
       "delta_mrr": 0.0254,
-      "avg_latency_ms": 7.398
+      "pct_mrr_change": 5.08,
+      "avg_latency_ms": 3.075
     },
     {
-      "model": "Model C (+ Skill Normalization)",
+      "model": "Model C (Baseline + Transformer)",
       "precision_at_1": 0.5,
       "delta_p1": 0.0,
       "precision_at_5": 0.1,
@@ -124,12 +160,13 @@
       "recall_at_5": 0.5,
       "delta_r5": 0.0,
       "ndcg_at_5": 0.5,
-      "mrr": 0.5254,
-      "delta_mrr": 0.0254,
-      "avg_latency_ms": 5.782
+      "mrr": 0.5313,
+      "delta_mrr": 0.0313,
+      "pct_mrr_change": 6.26,
+      "avg_latency_ms": 573.899
     },
     {
-      "model": "Model D (+ Availability Gating)",
+      "model": "Model D (Transformer + Trust)",
       "precision_at_1": 0.5,
       "delta_p1": 0.0,
       "precision_at_5": 0.1,
@@ -137,12 +174,13 @@
       "recall_at_5": 0.5,
       "delta_r5": 0.0,
       "ndcg_at_5": 0.5,
-      "mrr": 0.5254,
-      "delta_mrr": 0.0254,
-      "avg_latency_ms": 5.917
+      "mrr": 0.5206,
+      "delta_mrr": 0.0206,
+      "pct_mrr_change": 4.12,
+      "avg_latency_ms": 539.88
     },
     {
-      "model": "Model E (Full Hybrid Matcher)",
+      "model": "Model E (Transformer + Geo)",
       "precision_at_1": 0.5,
       "delta_p1": 0.0,
       "precision_at_5": 0.1,
@@ -150,9 +188,38 @@
       "recall_at_5": 0.5,
       "delta_r5": 0.0,
       "ndcg_at_5": 0.5,
-      "mrr": 0.5254,
-      "delta_mrr": 0.0254,
-      "avg_latency_ms": 6.489
+      "mrr": 0.5346,
+      "delta_mrr": 0.0346,
+      "pct_mrr_change": 6.92,
+      "avg_latency_ms": 598.117
+    },
+    {
+      "model": "Model F (Transformer + Skill Norm)",
+      "precision_at_1": 0.5,
+      "delta_p1": 0.0,
+      "precision_at_5": 0.1,
+      "delta_p5": 0.0,
+      "recall_at_5": 0.5,
+      "delta_r5": 0.0,
+      "ndcg_at_5": 0.5,
+      "mrr": 0.5313,
+      "delta_mrr": 0.0313,
+      "pct_mrr_change": 6.26,
+      "avg_latency_ms": 513.63
+    },
+    {
+      "model": "Model G (Full Hybrid Matcher)",
+      "precision_at_1": 0.5,
+      "delta_p1": 0.0,
+      "precision_at_5": 0.1,
+      "delta_p5": 0.0,
+      "recall_at_5": 0.5,
+      "delta_r5": 0.0,
+      "ndcg_at_5": 0.5,
+      "mrr": 0.5313,
+      "delta_mrr": 0.0313,
+      "pct_mrr_change": 6.26,
+      "avg_latency_ms": 561.015
     }
   ]
 }
