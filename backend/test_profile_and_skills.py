@@ -317,7 +317,45 @@ async def run_tests():
         nearby_verified = res.json()
         matching_verified = [w for w in nearby_verified if w["id"] == worker_profile_id]
         assert len(matching_verified) >= 1, "FAIL: Worker did not match on a VERIFIED skill!"
-        print("  [PASS] Test H PASSED: Discovery and matching exclusively consider VERIFIED skills.")
+        # ===============================================================
+        # TEST I — QUEUE FILTERING (APPROVED/REJECTED DO NOT APPEAR IN PENDING QUEUE)
+        # ===============================================================
+        print("\n[TEST I] Approved and Rejected Skills no longer appear in pending queue...")
+        res = await client.get(
+            "/api/v1/admin/skill-approvals",
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert res.status_code == 200
+        current_queue = res.json()
+        queue_ids = [item["id"] for item in current_queue]
+        assert electrical_skill_id not in queue_ids, "FAIL: Approved skill still in pending queue!"
+        assert carpentry_skill_id not in queue_ids, "FAIL: Rejected skill still in pending queue!"
+        for item in current_queue:
+            assert item["status"] in ("pending", "PENDING"), f"FAIL: Non-pending item with status {item['status']} in queue!"
+        print("  [PASS] Test I PASSED: Verified approved and rejected skills are cleanly excluded from pending queue.")
+
+        # ===============================================================
+        # TEST J — EMPTY QUEUE BEHAVIOR (ALL RESOLVED)
+        # ===============================================================
+        print("\n[TEST J] Empty queue returns HTTP 200 with empty list...")
+        # Resolve the remaining pending skill (Plumbing Installation)
+        # Find its ID from current queue
+        plumbing_item = [item for item in current_queue if item["skill_name"] == "Plumbing Installation"][0]
+        res = await client.post(
+            f"/api/v1/admin/skill-approvals/{plumbing_item['id']}/approve",
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert res.status_code == 200
+
+        # Now fetch queue again - should be empty or only have other workers' skills
+        res = await client.get(
+            "/api/v1/admin/skill-approvals",
+            headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert res.status_code == 200
+        empty_check = [item for item in res.json() if item["worker_id"] == worker_profile_id]
+        assert len(empty_check) == 0, f"Expected 0 pending skills for worker, found {empty_check}"
+        print("  [PASS] Test J PASSED: Queue cleanly empties when all items are approved/rejected.")
 
     print("\n===============================================================")
     print("ALL TESTS PASSED WITH 100% SUCCESS!")

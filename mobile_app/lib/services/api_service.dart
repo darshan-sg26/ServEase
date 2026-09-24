@@ -690,7 +690,7 @@ class ApiService {
     return [];
   }
 
-  static Future<List<PendingSkillApproval>> fetchPendingSkillApprovals() async {
+  static Future<Map<String, dynamic>> fetchPendingSkillApprovals() async {
     try {
       final res = await http.get(
         Uri.parse('$formattedBaseUrl/admin/skill-approvals'),
@@ -698,12 +698,20 @@ class ApiService {
       );
       if (res.statusCode == 200) {
         final List list = jsonDecode(res.body);
-        return list.map((item) => PendingSkillApproval.fromJson(item)).toList();
+        final skills = list.map((item) => PendingSkillApproval.fromJson(item)).toList();
+        return {'success': true, 'data': skills};
+      } else {
+        String msg = 'Failed to load skill approvals (HTTP ${res.statusCode})';
+        try {
+          final err = jsonDecode(res.body);
+          if (err['detail'] != null) msg = err['detail'].toString();
+        } catch (_) {}
+        return {'success': false, 'error': msg, 'data': <PendingSkillApproval>[]};
       }
     } catch (e) {
       if (kDebugMode) print('fetchPendingSkillApprovals error: $e');
+      return {'success': false, 'error': 'Network connection error ($e)', 'data': <PendingSkillApproval>[]};
     }
-    return [];
   }
 
   static Future<Map<String, dynamic>> approveSkill(int skillId) async {

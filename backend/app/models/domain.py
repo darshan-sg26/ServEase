@@ -123,7 +123,7 @@ class WorkerSkill(Base):
     years_experience = Column(Float, default=1.0)
     hourly_rate = Column(Float, default=300.0)
     skill_tags = Column(JSON, default=list)
-    status = Column(SQLEnum(SkillStatus, values_callable=lambda x: [e.value for e in x]), default=SkillStatus.PENDING, nullable=False, index=True)
+    status = Column(SQLEnum(SkillStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=SkillStatus.PENDING, nullable=False, index=True)
     submitted_at = Column(DateTime, default=datetime.datetime.utcnow)
     reviewed_at = Column(DateTime, nullable=True)
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)

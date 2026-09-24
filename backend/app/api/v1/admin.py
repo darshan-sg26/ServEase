@@ -125,7 +125,7 @@ async def get_pending_skill_approvals(
     result = await db.execute(
         select(WorkerSkill)
         .options(selectinload(WorkerSkill.worker))
-        .where(WorkerSkill.status == SkillStatus.PENDING)
+        .where(WorkerSkill.status.in_([SkillStatus.PENDING, "pending", "PENDING"]))
         .order_by(WorkerSkill.submitted_at.desc())
     )
     skills = result.scalars().all()

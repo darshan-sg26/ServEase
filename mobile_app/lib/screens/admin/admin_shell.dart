@@ -17,6 +17,8 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
   List<PendingSkillApproval> _pendingSkills = [];
   bool _isLoading = true;
   bool _isFetching = false;
+  bool _isSkillsLoading = false;
+  String? _skillsError;
 
   @override
   void initState() {
@@ -44,6 +46,12 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
     if (!background && _analytics == null) {
       setState(() => _isLoading = true);
     }
+    if (mounted) {
+      setState(() {
+        _isSkillsLoading = true;
+        _skillsError = null;
+      });
+    }
     try {
       final results = await Future.wait([
         ApiService.fetchAnalytics(),
@@ -51,19 +59,35 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
         ApiService.fetchPendingSkillApprovals(),
       ]);
       if (mounted) {
+        final skillsRes = results[2] as Map<String, dynamic>;
         setState(() {
           _analytics = results[0] as PlatformAnalytics?;
           _fraudFlags = results[1] as List<FraudFlag>;
-          _pendingSkills = results[2] as List<PendingSkillApproval>;
+          if (skillsRes['success'] == true) {
+            _pendingSkills = (skillsRes['data'] as List).cast<PendingSkillApproval>();
+            _skillsError = null;
+          } else {
+            _skillsError = skillsRes['error'] as String? ?? 'Failed to load skill approvals.';
+            _pendingSkills = [];
+          }
+          _isSkillsLoading = false;
           _isLoading = false;
         });
       }
     } catch (e) {
-      // Safely handle error
+      if (mounted) {
+        setState(() {
+          _skillsError = 'Unexpected error: $e';
+          _isSkillsLoading = false;
+        });
+      }
     } finally {
       _isFetching = false;
       if (mounted && _isLoading) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _isSkillsLoading = false;
+        });
       }
     }
   }
@@ -237,13 +261,83 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 8),
 
-                        _pendingSkills.isEmpty
-                            ? const AppEmptyState(
-                                icon: Icons.verified_user_rounded,
-                                title: 'All Skills Verified',
-                                description: 'Zero worker skills pending verification. Queue is completely clear.',
-                              )
-                            : ListView.separated(
+                        if (_isSkillsLoading && _pendingSkills.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 32),
+                            child: Center(child: CircularProgressIndicator(color: AppColors.forest900)),
+                          )
+                        else if (_skillsError != null && _pendingSkills.isEmpty)
+                          AppCard(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.error.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 28),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'Unable to Load Skill Verification Queue',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(fontFamily: 'Sora', fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.ink900),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _skillsError!,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 12, color: AppColors.error),
+                                ),
+                                const SizedBox(height: 16),
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                                  label: const Text('Retry'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppColors.forest900,
+                                    side: const BorderSide(color: AppColors.forest900),
+                                  ),
+                                  onPressed: () => _loadAdminData(background: true),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (_pendingSkills.isEmpty)
+                          const AppEmptyState(
+                            icon: Icons.verified_user_rounded,
+                            title: 'All Skills Verified',
+                            description: 'Zero worker skills pending verification. Queue is completely clear.',
+                          )
+                        else
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (_skillsError != null)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.error.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 18),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Background refresh failed: $_skillsError',
+                                          style: const TextStyle(color: AppColors.error, fontSize: 11),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ListView.separated(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: _pendingSkills.length,
@@ -328,6 +422,8 @@ class _AdminShellState extends State<AdminShell> with WidgetsBindingObserver {
                                   );
                                 },
                               ),
+                            ],
+                          ),
 
                         const SizedBox(height: 20),
 
