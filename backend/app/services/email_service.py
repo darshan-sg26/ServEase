@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -154,10 +155,10 @@ def _build_html_email(otp: str, recipient_name: str, expire_minutes: int) -> str
 </html>
 """
 
-def check_gmail_api_status() -> dict:
+def check_email_service_status() -> dict:
     """
-    Returns a safe diagnostic dictionary indicating whether Gmail API environment
-    variables are loaded, without exposing secret values or tokens.
+    Returns a safe diagnostic dictionary indicating whether Gmail API and SMTP
+    configurations are loaded, without exposing secret values or tokens.
     """
     return {
         "GMAIL_CLIENT_ID_configured": bool(settings.GMAIL_CLIENT_ID),
@@ -165,22 +166,34 @@ def check_gmail_api_status() -> dict:
         "GMAIL_REFRESH_TOKEN_configured": bool(settings.GMAIL_REFRESH_TOKEN),
         "GMAIL_SENDER_EMAIL": settings.GMAIL_SENDER_EMAIL,
         "GMAIL_FROM_NAME": settings.GMAIL_FROM_NAME,
+        "SMTP_USER_configured": bool(settings.SMTP_USER),
+        "SMTP_PASSWORD_configured": bool(settings.SMTP_PASSWORD),
+        "SMTP_HOST": settings.SMTP_HOST,
+        "SMTP_PORT": settings.SMTP_PORT,
     }
+
+def check_gmail_api_status() -> dict:
+    """Backward compatibility alias for check_email_service_status."""
+    return check_email_service_status()
 
 def _send_gmail_api_sync(to_email: str, subject: str, html_content: str, text_content: str):
     """
     Synchronous helper executed in thread pool that constructs and dispatches
     the email via the official Google Gmail API over HTTPS (port 443).
     """
-    if not settings.GMAIL_CLIENT_ID or not settings.GMAIL_CLIENT_SECRET or not settings.GMAIL_REFRESH_TOKEN:
+    token = (settings.GMAIL_REFRESH_TOKEN or "").strip().strip("'\"")
+    client_id = (settings.GMAIL_CLIENT_ID or "").strip().strip("'\"")
+    client_secret = (settings.GMAIL_CLIENT_SECRET or "").strip().strip("'\"")
+
+    if not client_id or not client_secret or not token:
         raise RuntimeError("Gmail API OAuth credentials (CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN) are not fully configured.")
 
     creds = Credentials(
         token=None,
-        refresh_token=settings.GMAIL_REFRESH_TOKEN,
+        refresh_token=token,
         token_uri="https://oauth2.googleapis.com/token",
-        client_id=settings.GMAIL_CLIENT_ID,
-        client_secret=settings.GMAIL_CLIENT_SECRET,
+        client_id=client_id,
+        client_secret=client_secret,
         scopes=[GMAIL_SEND_SCOPE],
     )
 
@@ -188,7 +201,9 @@ def _send_gmail_api_sync(to_email: str, subject: str, html_content: str, text_co
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = formataddr((settings.GMAIL_FROM_NAME, settings.GMAIL_SENDER_EMAIL))
+    from_name = settings.GMAIL_FROM_NAME or "ServEase"
+    from_addr = settings.GMAIL_SENDER_EMAIL or "servease.dev@gmail.com"
+    msg["From"] = formataddr((from_name, from_addr))
     msg["To"] = to_email
 
     msg.attach(MIMEText(text_content, "plain", "utf-8"))
@@ -204,9 +219,84 @@ def _send_gmail_api_sync(to_email: str, subject: str, html_content: str, text_co
         logger.error(f"Failed to dispatch email via Google Gmail API to {to_email}: {e}")
         raise RuntimeError(f"Gmail API delivery failed: {str(e)}")
 
+def _send_smtp_sync(to_email: str, subject: str, html_content: str, text_content: str):
+    """
+    Synchronous SMTP helper that sends email via configured SMTP server
+    (e.g., smtp.gmail.com on port 587 with STARTTLS or port 465 with SSL).
+    """
+    smtp_user = (settings.SMTP_USER or "").strip().strip("'\"")
+    smtp_pwd = (settings.SMTP_PASSWORD or "").replace(" ", "").strip().strip("'\"")
+
+    if not smtp_user or not smtp_pwd:
+        raise RuntimeError("SMTP credentials (SMTP_USER, SMTP_PASSWORD) are not fully configured.")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    from_name = settings.SMTP_FROM_NAME or settings.GMAIL_FROM_NAME or "ServEase"
+    from_addr = smtp_user
+    msg["From"] = formataddr((from_name, from_addr))
+    msg["To"] = to_email
+
+    msg.attach(MIMEText(text_content, "plain", "utf-8"))
+    msg.attach(MIMEText(html_content, "html", "utf-8"))
+
+    if settings.SMTP_PORT == 465:
+        with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
+            server.login(smtp_user, smtp_pwd)
+            server.sendmail(from_addr, [to_email], msg.as_string())
+    else:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_user, smtp_pwd)
+            server.sendmail(from_addr, [to_email], msg.as_string())
+
+    logger.info(f"Verification email successfully dispatched to {to_email} via SMTP ({settings.SMTP_HOST}:{settings.SMTP_PORT}).")
+
+def _dispatch_email_sync(to_email: str, subject: str, html_content: str, text_content: str):
+    """
+    Dispatches email using available service providers:
+    1. First attempts Google Gmail API over HTTPS (port 443).
+    2. If Gmail API fails or is unconfigured, attempts SMTP delivery as fallback.
+    """
+    errors = []
+
+    # 1. Try Gmail API if credentials are provided
+    has_gmail_oauth = bool(
+        settings.GMAIL_CLIENT_ID
+        and settings.GMAIL_CLIENT_SECRET
+        and settings.GMAIL_REFRESH_TOKEN
+    )
+    if has_gmail_oauth:
+        try:
+            _send_gmail_api_sync(to_email, subject, html_content, text_content)
+            return
+        except Exception as e:
+            errors.append(f"Gmail API error: {e}")
+            logger.warning(f"Gmail API delivery attempt failed for {to_email}: {e}. Checking for SMTP fallback...")
+
+    # 2. Try SMTP if credentials are provided
+    has_smtp = bool(settings.SMTP_USER and settings.SMTP_PASSWORD)
+    if has_smtp:
+        try:
+            _send_smtp_sync(to_email, subject, html_content, text_content)
+            return
+        except Exception as e:
+            errors.append(f"SMTP error: {e}")
+            logger.error(f"SMTP delivery attempt failed for {to_email}: {e}")
+
+    # 3. If neither method succeeded, raise error detailing failure
+    if not has_gmail_oauth and not has_smtp:
+        raise RuntimeError("No email service is configured. Please configure Gmail API OAuth credentials or SMTP credentials.")
+
+    err_summary = "; ".join(errors)
+    raise RuntimeError(f"Email delivery failed across all available methods: {err_summary}")
+
 async def send_otp_email(to_email: str, otp: str, recipient_name: str = "") -> bool:
     """
-    Asynchronously dispatches a branded verification OTP email to the user via Google Gmail API.
+    Asynchronously dispatches a branded verification OTP email to the user.
+    Uses Google Gmail API over HTTPS (port 443) with automatic SMTP fallback.
     """
     subject = f"{otp} is your ServEase verification code"
     html_content = _build_html_email(otp, recipient_name, settings.OTP_EXPIRE_MINUTES)
@@ -217,5 +307,6 @@ async def send_otp_email(to_email: str, otp: str, recipient_name: str = "") -> b
         f"If you did not request this verification, please safely ignore this email.\n"
     )
 
-    await asyncio.to_thread(_send_gmail_api_sync, to_email, subject, html_content, text_content)
+    await asyncio.to_thread(_dispatch_email_sync, to_email, subject, html_content, text_content)
     return True
+

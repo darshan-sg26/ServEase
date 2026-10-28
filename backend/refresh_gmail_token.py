@@ -41,10 +41,10 @@ def load_env_config():
         sys.exit(1)
     vals = dotenv_values(str(ENV_PATH))
     return {
-        "client_id": vals.get("GMAIL_CLIENT_ID", "").strip(),
-        "client_secret": vals.get("GMAIL_CLIENT_SECRET", "").strip(),
-        "refresh_token": vals.get("GMAIL_REFRESH_TOKEN", "").strip(),
-        "sender_email": vals.get("GMAIL_SENDER_EMAIL", "servease.dev@gmail.com").strip(),
+        "client_id": vals.get("GMAIL_CLIENT_ID", "").strip().strip("'\""),
+        "client_secret": vals.get("GMAIL_CLIENT_SECRET", "").strip().strip("'\""),
+        "refresh_token": vals.get("GMAIL_REFRESH_TOKEN", "").strip().strip("'\""),
+        "sender_email": vals.get("GMAIL_SENDER_EMAIL", "servease.dev@gmail.com").strip().strip("'\""),
     }
 
 def print_diagnostics(cfg):
@@ -128,7 +128,8 @@ def exchange_code_for_tokens(code, cfg):
     return new_refresh
 
 def save_refresh_token(new_refresh):
-    set_key(str(ENV_PATH), "GMAIL_REFRESH_TOKEN", new_refresh)
+    clean_token = new_refresh.strip().strip("'\"")
+    set_key(str(ENV_PATH), "GMAIL_REFRESH_TOKEN", clean_token, quote_mode="never")
     print(f"[SAVED] Updated GMAIL_REFRESH_TOKEN in {ENV_PATH}")
 
 async def send_test_email(to_email):
